@@ -34,10 +34,10 @@ jobs:
             fs.writeFileSync('${{github.workspace}}/pr.zip', Buffer.from(download.data));
       - run: unzip pr.zip
       - run: |
-        export REPO=$(cat ./pr/repo)
-        export SHA=$(cat ./pr/sha)
-        echo "::set-output name=REPO::$REPO"
-        echo "::set-output name=SHA::$SHA"
+          export REPO=$(cat ./pr/repo)
+          export SHA=$(cat ./pr/sha)
+          echo "::set-output name=REPO::$REPO"
+          echo "::set-output name=SHA::$SHA"
         id: extract-id
 
       - name: Checkout
