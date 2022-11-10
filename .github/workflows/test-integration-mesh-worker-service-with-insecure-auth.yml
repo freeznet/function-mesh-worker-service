@@ -1,17 +1,16 @@
 name: Precommit - Integration Tests With Insecure Auth - Mesh Worker Service
 on:
-  pull_request:
-    branches:
-      - '*'
   pull_request_target:
-    branches:
-      - '*'
+    types:
+      - opened
+      - reopened
+      - synchronize
+permissions: read-all
 jobs:
 
   integration:
+    if: (github.repository == 'streamnative/function-mesh-worker-service') && (github.event.pull_request.state == 'open')
     runs-on: ubuntu-latest
-    permissions:
-      packages: read
     steps:
       - name: Checkout
         uses: actions/checkout@v2
