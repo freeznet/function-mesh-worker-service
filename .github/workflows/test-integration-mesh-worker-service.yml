@@ -1,11 +1,7 @@
 name: Precommit - Integration Tests - Mesh Worker Service
-on:
-  pull_request:
-    branches:
-      - '*'
+on: pull_request_target
 permissions: read-all
 jobs:
-
   integration:
     runs-on: ubuntu-latest
     steps:
@@ -13,6 +9,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 0
+          repository: ${{github.event.pull_request.head.repo.full_name}}
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Tune Runner VM
