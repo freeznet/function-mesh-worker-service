@@ -1,5 +1,8 @@
 name: Precommit - Integration Tests - Mesh Worker Service
 on:
+  pull_request:
+    branches:
+      - '*'
   pull_request_target:
     branches:
       - '*'
