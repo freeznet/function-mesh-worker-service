@@ -1,5 +1,5 @@
 name: Precommit - Unit Tests
-on: [pull_request, pull_request_target]
+on: [pull_request]
 permissions: read-all
 jobs:
   build:
@@ -43,3 +43,15 @@ jobs:
 
       - name: Run mesh worker service unit test
         run: mvn clean install
+
+      - name: Save PR sha
+        run: |
+          mkdir -p ./pr
+          echo ${{ github.event.number }} > ./pr/NR
+          echo ${{ github.event.pull_request.head.repo.full_name }} > ./pr/repo
+          echo ${{ github.event.pull_request.head.sha }} > ./pr/sha
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: pr
+          path: pr/
