@@ -29,6 +29,8 @@ affinity:
 components:
   autorecovery: false
   pulsar_manager: false
+  sql_worker: false
+  proxy: false
 
 ## disable monitoring stack
 monitoring:
@@ -38,6 +40,7 @@ monitoring:
   grafana: false
   # monitoring - node_exporter
   node_exporter: false
+  loki: false
 
 images:
   zookeeper:
