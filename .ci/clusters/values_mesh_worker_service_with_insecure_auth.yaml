@@ -119,6 +119,7 @@ pulsar_metadata:
     tag: latest
 
 functions:
+  useDedicatedRunner: false
   configData:
     functionsWorkerServiceNarPackage: /pulsar/mesh-worker-service.nar
     narExtractionDirectory: /tmp
