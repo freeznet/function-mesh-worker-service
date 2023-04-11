@@ -1042,3 +1042,153 @@ function ci::verify_function_stats_api_with_auth() {
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions delete --name api-java-fn')
     echo "${RET}"
 }
+
+function ci::verify_function_start_stop_restart() {
+  # submit function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions create --namespace default --tenant public --name py-fn-operator \
+                                                                             --auto-ack true \
+                                                                             --classname exclamation_function.ExclamationFunction \
+                                                                             --py /pulsar/examples/python-examples/exclamation_function.py \
+                                                                             --inputs "persistent://public/default/input-python-operator-topic" \
+                                                                             --output "persistent://public/default/output-python-operator-topic" \
+                                                                             --log-topic "persistent://public/default/python-function-operator-logs"'
+  ${KUBECTL} wait -l compute.functionmesh.io/pulsar-component=py-fn-operator --for=condition=Ready pod --timeout=5m
+  # verify stop function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions stop --name py-fn-operator'
+  timeout 1m bash -c 'num=1
+  while [ $num -gt 0 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=py-fn-operator --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify stop function"
+    exit 1
+  fi
+  # verify start function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions start --name py-fn-operator'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=py-fn-operator --no-headers | wc -l)
+      sleep 1s
+  done'
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions stop --name py-fn-operator'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify start function"
+    exit 1
+  fi
+  # verify restart function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions restart --name py-fn-operator'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=py-fn-operator --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify start function"
+    exit 1
+  fi
+  restart_at=$(${KUBECTL} get po -l compute.functionmesh.io/pulsar-component=py-fn-operator -o jsonpath='{.items[0].metadata.annotations.kubectl\.kubernetes\.io\/restartedAt}')
+  if [ ${restart_at} == "" ]; then
+    echo "failed to verify restart function"
+    exit 1
+  fi
+  # clean up function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin functions delete --name py-fn-operator'
+}
+
+function ci::verify_sink_start_stop_restart() {
+  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
+  # submit sink
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name fn-operator-sink --inputs persistent://public/default/package-upload-connector-topic --custom-runtime-options '{"inputTypeClassName": "org.apache.pulsar.io.datagenerator.Person"}')
+  ${KUBECTL} wait -l compute.functionmesh.io/pulsar-component=fn-operator-sink --for=condition=Ready pod --timeout=5m
+  # verify stop function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sinks stop --name fn-operator-sink'
+  timeout 1m bash -c 'num=1
+  while [ $num -gt 0 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-sink --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify stop sink"
+    exit 1
+  fi
+  # verify start sink
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sinks start --name fn-operator-sink'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-sink --no-headers | wc -l)
+      sleep 1s
+  done'
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sinks stop --name fn-operator-sink'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify start sink"
+    exit 1
+  fi
+
+  # verify restart sink
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sinks restart --name fn-operator-sink'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-sink --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify restart sink"
+    exit 1
+  fi
+  restart_at=$(${KUBECTL} get po -l compute.functionmesh.io/pulsar-component=fn-operator-sink -o jsonpath='{.items[0].metadata.annotations.kubectl\.kubernetes\.io\/restartedAt}')
+  if [ ${restart_at} == "" ]; then
+    echo "failed to verify restart function"
+    exit 1
+  fi
+  # clean up function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sinks delete --name fn-operator-sink'
+}
+
+function ci::verify_source_start_stop_restart() {
+  # submit source
+  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name fn-operator-source --destination-topic-name persistent://public/default/package-upload-connector-topic --custom-runtime-options '{"outputTypeClassName": "java.nio.ByteBuffer"}')
+  ${KUBECTL} wait -l compute.functionmesh.io/pulsar-component=fn-operator-source --for=condition=Ready pod --timeout=5m
+  # verify stop source
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sources stop --name fn-operator-source'
+  timeout 1m bash -c 'num=1
+  while [ $num -gt 0 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-source --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify stop source"
+    exit 1
+  fi
+  # verify start source
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sources start --name fn-operator-source'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-source --no-headers | wc -l)
+      sleep 1s
+  done'
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sources stop --name fn-operator-source'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify start source"
+    exit 1
+  fi
+  # verify restart function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sources restart --name fn-operator-source'
+  timeout 1m bash -c 'num=0
+  while [ $num -lt 1 ]; do
+      num=$(kubectl get po -l compute.functionmesh.io/pulsar-component=fn-operator-source --no-headers | wc -l)
+      sleep 1s
+  done'
+  if [ $? -ne 0 ]; then
+    echo "failed to verify start source"
+    exit 1
+  fi
+  restart_at=$(${KUBECTL} get po -l compute.functionmesh.io/pulsar-component=fn-operator-source -o jsonpath='{.items[0].metadata.annotations.kubectl\.kubernetes\.io\/restartedAt}')
+  if [ ${restart_at} == "" ]; then
+    echo "failed to verify restart source"
+    exit 1
+  fi
+  # clean up function
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin sources delete --name fn-operator-source'
+}

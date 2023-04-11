@@ -40,6 +40,7 @@ import io.functionmesh.compute.util.KubernetesUtils;
 import io.functionmesh.compute.util.PackageManagementServiceUtil;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.kubernetes.client.custom.V1Patch;
 import io.kubernetes.client.openapi.models.V1ContainerState;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
 import io.kubernetes.client.openapi.models.V1Pod;
@@ -48,8 +49,10 @@ import io.kubernetes.client.openapi.models.V1PodStatus;
 import io.kubernetes.client.openapi.models.V1StatefulSet;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import java.io.IOException;
+import io.kubernetes.client.util.generic.options.PatchOptions;
 import java.io.InputStream;
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -59,6 +62,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
+import io.kubernetes.client.util.PatchUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
 import org.apache.pulsar.common.functions.FunctionConfig;
@@ -105,16 +109,21 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
             throw new RestException(Response.Status.BAD_REQUEST, "Uploading Jar File is not enabled");
         }
         if (customConfig != null && customConfig.getDisabledRuntimes() != null) {
-            if (functionConfig.getRuntime() != null && customConfig.getDisabledRuntimes().contains(functionConfig.getRuntime().toString().toLowerCase())) {
-                throw new RestException(Response.Status.BAD_REQUEST, String.format("Runtime %s is not enabled", functionConfig.getRuntime()));
+            if (functionConfig.getRuntime() != null && customConfig.getDisabledRuntimes()
+                    .contains(functionConfig.getRuntime().toString().toLowerCase())) {
+                throw new RestException(Response.Status.BAD_REQUEST,
+                        String.format("Runtime %s is not enabled", functionConfig.getRuntime()));
             }
-            if (functionConfig.getPy() != null && customConfig.getDisabledRuntimes().contains(FunctionConfig.Runtime.PYTHON.toString().toLowerCase())) {
+            if (functionConfig.getPy() != null && customConfig.getDisabledRuntimes()
+                    .contains(FunctionConfig.Runtime.PYTHON.toString().toLowerCase())) {
                 throw new RestException(Response.Status.BAD_REQUEST, "Runtime 'python' is not enabled");
             }
-            if (functionConfig.getJar() != null && customConfig.getDisabledRuntimes().contains(FunctionConfig.Runtime.JAVA.toString().toLowerCase())) {
+            if (functionConfig.getJar() != null && customConfig.getDisabledRuntimes()
+                    .contains(FunctionConfig.Runtime.JAVA.toString().toLowerCase())) {
                 throw new RestException(Response.Status.BAD_REQUEST, "Runtime 'java' is not enabled");
             }
-            if (functionConfig.getGo() != null && customConfig.getDisabledRuntimes().contains(FunctionConfig.Runtime.GO.toString().toLowerCase())) {
+            if (functionConfig.getGo() != null && customConfig.getDisabledRuntimes()
+                    .contains(FunctionConfig.Runtime.GO.toString().toLowerCase())) {
                 throw new RestException(Response.Status.BAD_REQUEST, "Runtime 'go' is not enabled");
             }
         }
@@ -840,5 +849,149 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
         validateFunctionEnabled();
         return super.listFunctions(tenant, namespace, clientRole, clientAuthenticationDataHttps);
+    }
+
+    @Override
+    public void stopFunctionInstances(final String tenant,
+                                      final String namespace,
+                                      final String functionName,
+                                      final String clientRole,
+                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+        validateFunctionEnabled();
+        try {
+            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            try {
+                validateResourceObject(v1alpha1Function);
+            } catch (IllegalArgumentException e) {
+                log.warn("get {}/{}/{} function failed", tenant, namespace, functionName, e);
+                throw new RestException(javax.ws.rs.core.Response.Status.NOT_FOUND,
+                        "function not found");
+            }
+
+            if (v1alpha1Function.getSpec() != null && v1alpha1Function.getSpec().getMaxReplicas() != null) {
+                throw new RestException(javax.ws.rs.core.Response.Status.FORBIDDEN,
+                        "cannot stop function resource when HPA is enabled");
+            }
+
+            final String patchStr = "[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":0}]";
+
+            extractResponse(getResourceApi().patch(
+                    namespace,
+                    hashName,
+                    V1Patch.PATCH_FORMAT_JSON_PATCH,
+                    new V1Patch(patchStr),
+                    new PatchOptions()));
+        } catch (Exception e) {
+            log.error("failed to stop function {} in namespace {}", functionName, namespace, e);
+            throw new RestException(javax.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+    }
+
+    @Override
+    public void startFunctionInstances(final String tenant,
+                                       final String namespace,
+                                       final String functionName,
+                                       final String clientRole,
+                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
+        validateFunctionEnabled();
+        try {
+            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            try {
+                validateResourceObject(v1alpha1Function);
+            } catch (IllegalArgumentException e) {
+                log.warn("get {}/{}/{} function failed", tenant, namespace, functionName, e);
+                throw new RestException(javax.ws.rs.core.Response.Status.NOT_FOUND,
+                        "function not found");
+            }
+
+            if (v1alpha1Function.getSpec().getMaxReplicas() != null) {
+                throw new RestException(javax.ws.rs.core.Response.Status.FORBIDDEN,
+                        "cannot start function resource when HPA is enabled");
+            }
+            if (v1alpha1Function.getSpec().getReplicas() != null && v1alpha1Function.getSpec().getReplicas() > 0) {
+                throw new RestException(javax.ws.rs.core.Response.Status.FORBIDDEN, "function is running");
+            }
+            if (v1alpha1Function.getSpec().getMinReplicas() == null ||
+                    v1alpha1Function.getSpec().getMinReplicas().equals(0)) {
+                throw new RestException(javax.ws.rs.core.Response.Status.FORBIDDEN,
+                        "cannot start function resource with a minimum number of ready replicas less than 1");
+            }
+
+            int minReplicas = v1alpha1Function.getSpec().getMinReplicas();
+            String patchStr =
+                    String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
+
+            extractResponse(getResourceApi().patch(
+                    namespace,
+                    hashName,
+                    V1Patch.PATCH_FORMAT_JSON_PATCH,
+                    new V1Patch(patchStr),
+                    new PatchOptions()));
+        } catch (Exception e) {
+            log.error("failed to start function {} in namespace {}", functionName, namespace, e);
+            throw new RestException(javax.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+    }
+
+    @Override
+    public void restartFunctionInstances(final String tenant,
+                                         final String namespace,
+                                         final String functionName,
+                                         final String clientRole,
+                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
+        try {
+            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
+
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            try {
+                validateResourceObject(v1alpha1Function);
+            } catch (IllegalArgumentException e) {
+                log.warn("get {}/{}/{} function failed", tenant, namespace, functionName, e);
+                throw new RestException(javax.ws.rs.core.Response.Status.NOT_FOUND,
+                        "function not found");
+            }
+
+            // just start function if it is already stopped
+            if (v1alpha1Function.getSpec().getReplicas() != null && v1alpha1Function.getSpec().getReplicas() == 0) {
+                int minReplicas = v1alpha1Function.getSpec().getMinReplicas();
+                String patchStr =
+                        String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
+
+                extractResponse(getResourceApi().patch(
+                        namespace,
+                        hashName,
+                        V1Patch.PATCH_FORMAT_JSON_PATCH,
+                        new V1Patch(patchStr),
+                        new PatchOptions()));
+            } else { // else we trigger a restart of the statefulset by updating the spec
+                V1StatefulSet v1StatefulSet = getFunctionStatefulSet(v1alpha1Function);
+                if (v1StatefulSet == null) {
+                    throw new RestException(javax.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR,
+                            "failed to find function instance");
+                }
+
+                v1StatefulSet.getSpec().getTemplate().getMetadata()
+                        .putAnnotationsItem("kubectl.kubernetes.io/restartedAt", Instant.now().toString());
+                String v1StatefulSetJSON = worker().getApiClient().getJSON().serialize(v1StatefulSet);
+                PatchUtils.patch(
+                        V1StatefulSet.class,
+                        () -> worker().getAppsV1Api().patchNamespacedStatefulSetCall(
+                                v1StatefulSet.getMetadata().getName(),
+                                namespace,
+                                new V1Patch(v1StatefulSetJSON),
+                                null,
+                                null,
+                                "kubectl-rollout",
+                                null,
+                                null),
+                        V1Patch.PATCH_FORMAT_STRATEGIC_MERGE_PATCH,
+                        worker().getApiClient());
+            }
+        } catch (Exception e) {
+            log.error("failed to restart function {} in namespace {}", functionName, namespace, e);
+            throw new RestException(javax.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
     }
 }

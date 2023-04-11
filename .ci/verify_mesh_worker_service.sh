@@ -38,4 +38,7 @@ if [ "x${WITH_AUTH}" = "xtrue" ]; then
 else
   ci::verify_mesh_worker_service_pulsar_admin
   ci::verify_function_stats_api
+  ci::verify_function_start_stop_restart
+  ci::verify_sink_start_stop_restart
+  ci::verify_source_start_stop_restart
 fi

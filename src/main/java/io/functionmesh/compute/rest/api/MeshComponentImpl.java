@@ -251,7 +251,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                      final URI uri,
                                      final String clientRole,
                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
-
+        throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
+                "stop the specified function instance is not supported via mesh worker service");
     }
 
     @Override
@@ -262,7 +263,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                       final URI uri,
                                       final String clientRole,
                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
-
+        throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
+                "start the specified function instance is not supported via mesh worker service");
     }
 
     @Override
@@ -273,7 +275,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                         final URI uri,
                                         final String clientRole,
                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
-
+        throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
+                "restart the specified function instance is not supported via mesh worker service");
     }
 
     @Override
