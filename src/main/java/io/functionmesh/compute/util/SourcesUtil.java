@@ -25,6 +25,7 @@ import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpd
 import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpdatePolicy.UpdateModeEnum.OFF;
 import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpdatePolicy.UpdateModeEnum.RECREATE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
+import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
 import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.downloadPackageFile;
@@ -466,6 +467,13 @@ public class SourcesUtil {
         }
 
         v1alpha1Source.setSpec(v1alpha1SourceSpec);
+
+        Map<String, String> currentAnnotations = v1alpha1Source.getMetadata().getAnnotations();
+        if (currentAnnotations == null) {
+            currentAnnotations = new HashMap<>();
+        }
+        currentAnnotations.put(ANNOTATION_NEED_CLEANUP, "false");
+        v1alpha1Source.getMetadata().setAnnotations(currentAnnotations);
 
         return v1alpha1Source;
 

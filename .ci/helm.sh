@@ -709,7 +709,9 @@ function ci::verify_go_package_with_auth() {
 
 function ci::create_java_function_by_upload() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- cat conf/functions_worker.yml
-  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar /pulsar/examples/api-examples.jar --name package-upload-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-upload-java-fn-input --cpu 0.1)
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics create persistent://public/default/package-upload-java-fn-input1
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics create persistent://public/default/package-upload-java-fn-input2
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar /pulsar/examples/api-examples.jar --name package-upload-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --topics-pattern persistent://public/default/package-upload-java-fn-input.* --cpu 0.1)
   ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   echo "${RET}"
@@ -726,12 +728,40 @@ function ci::create_java_function_by_upload() {
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   done
   echo "java function test done"
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input1 | grep "public/default/package-upload-java-fn" | wc -l)
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input1 | grep "public/default/package-upload-java-fn" | wc -l)
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input2 | grep "public/default/package-upload-java-fn" | wc -l)
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input2 | grep "public/default/package-upload-java-fn" | wc -l)
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-upload-java-fn)
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata function://public/default/package-upload-java-fn@latest; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata function://public/default/package-upload-java-fn@latest)
     echo "${RET}"
   fi
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input1 | grep "public/default/package-upload-java-fn" | wc -l)
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input1 | grep "public/default/package-upload-java-fn" | wc -l)
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input2 | grep "public/default/package-upload-java-fn" | wc -l)
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-java-fn-input2 | grep "public/default/package-upload-java-fn" | wc -l)
+  done
+  echo "cleanup subscription for function test done"
 }
 
 function ci::create_java_function_by_upload_with_auth() {
@@ -753,12 +783,28 @@ function ci::create_java_function_by_upload_with_auth() {
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   done
   echo "java function test done"
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-java-fn-input | grep "public/default/package-upload-java-fn" | wc -l')
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-java-fn-input | grep "public/default/package-upload-java-fn" | wc -l')
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions delete --name package-upload-java-fn')
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata function://public/default/package-upload-java-fn@latest'; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata function://public/default/package-upload-java-fn@latest')
     echo "${RET}"
   fi
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-java-fn-input | grep "public/default/package-upload-java-fn" | wc -l')
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-java-fn-input | grep "public/default/package-upload-java-fn" | wc -l')
+  done
+  echo "cleanup subscription for function test done"
 }
 
 function ci::verify_secrets_python_package() {
@@ -831,8 +877,8 @@ function ci::verify_secrets_python_package_with_auth() {
 
 function ci::create_source_by_upload() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- cat conf/functions_worker.yml
-  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
-  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --destination-topic-name persistent://public/default/package-upload-connector-topic --custom-runtime-options '{"outputTypeClassName": "java.nio.ByteBuffer"}')
+  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-batch-data-generator)
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --classname  org.apache.pulsar.io.batchdatagenerator.BatchDataGeneratorSource --destination-topic-name persistent://public/default/package-upload-connector-topic --batch-source-config '{"discoveryTriggererClassName": "org.apache.pulsar.io.batchdiscovery.ImmediateTriggerer"}' --custom-runtime-options '{"outputTypeClassName": "org.apache.pulsar.io.batchdatagenerator.Person"}')
   ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   echo "${RET}"
@@ -855,18 +901,46 @@ function ci::create_source_by_upload() {
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "source test done"
+
+  TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  while [[ ${TOPIC} -ne 1 ]]; do
+    echo ${TOPIC};
+    sleep 20
+    TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources delete --name package-upload-source)
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata source://public/default/package-upload-source@latest; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata source://public/default/package-upload-source@latest)
     echo "${RET}"
   fi
+
+  TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  while [[ ${TOPIC} -ne 0 ]]; do
+    echo ${TOPIC};
+    sleep 20
+    TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  done
+  echo "cleanup subscription for source test done"
 }
 
 function ci::create_source_by_upload_with_auth() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- cat conf/functions_worker.yml
-  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
-  command="${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin \$brokerClientAuthenticationPlugin --auth-params \$brokerClientAuthenticationParameters sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --destination-topic-name persistent://public/default/package-upload-connector-topic --custom-runtime-options \"{\\\"outputTypeClassName\\\": \\\"java.nio.ByteBuffer\\\"}\"'"
+  PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-batch-data-generator)
+  command="${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin \$brokerClientAuthenticationPlugin --auth-params \$brokerClientAuthenticationParameters sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --classname org.apache.pulsar.io.batchdatagenerator.BatchDataGeneratorSource --destination-topic-name persistent://public/default/package-upload-connector-topic --batch-source-config \"{\\\"discoveryTriggererClassName\\\": \\\"org.apache.pulsar.io.batchdiscovery.ImmediateTriggerer\\\"}\" --custom-runtime-options \"{\\\"outputTypeClassName\\\": \\\"org.apache.pulsar.io.batchdatagenerator.Person\\\"}\"'"
   RET=$(sh -c "$command")
   ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
@@ -890,12 +964,40 @@ function ci::create_source_by_upload_with_auth() {
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "source test done"
+
+  TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  while [[ ${TOPIC} -ne 1 ]]; do
+    echo ${TOPIC};
+    sleep 20
+    TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources delete --name package-upload-source')
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata source://public/default/package-upload-source@latest'; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata source://public/default/package-upload-source@latest')
     echo "${RET}"
   fi
+
+  TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  while [[ ${TOPIC} -ne 0 ]]; do
+    echo ${TOPIC};
+    sleep 20
+    TOPIC=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics list public/default | grep "persistent://public/default/package-upload-source-2c1626bf-intermediate" | wc -l')
+  done
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-source-2c1626bf-intermediate | grep "BatchSourceExecutor-public/default/package-upload-source" | wc -l')
+  done
+  echo "cleanup subscription for source test done"
 }
 
 function ci::create_sink_by_upload() {
@@ -922,12 +1024,28 @@ function ci::create_sink_by_upload() {
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "sink test done"
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l)
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l)
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks delete --name package-upload-sink)
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata sink://public/default/package-upload-sink@latest; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages get-metadata sink://public/default/package-upload-sink@latest)
     echo "${RET}"
   fi
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l)
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l)
+  done
+  echo "cleanup subscription for sink test done"
 }
 
 function ci::create_sink_by_upload_with_auth() {
@@ -955,12 +1073,28 @@ function ci::create_sink_by_upload_with_auth() {
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "sink test done"
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l')
+  while [[ ${SUB} -ne 1 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l')
+  done
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks delete --name package-upload-sink')
   echo "${RET}"
   if ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata sink://public/default/package-upload-sink@latest'; then
     RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages get-metadata sink://public/default/package-upload-sink@latest')
     echo "${RET}"
   fi
+
+  SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l')
+  while [[ ${SUB} -ne 0 ]]; do
+    echo ${SUB};
+    sleep 20
+    SUB=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters topics subscriptions persistent://public/default/package-upload-connector-topic | grep "public/default/package-upload-sink" | wc -l')
+  done
+  echo "cleanup subscription for sink test done"
 }
 
 function ci::verify_function_stats_api() {

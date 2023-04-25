@@ -37,10 +37,16 @@ import static org.apache.bookkeeper.common.concurrent.FutureUtils.result;
 import static org.apache.commons.lang3.StringUtils.isEmpty;
 import static org.apache.pulsar.functions.utils.FunctionCommon.getStateNamespace;
 import static org.apache.pulsar.functions.worker.rest.RestUtils.throwUnavailableException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.functionmesh.compute.MeshWorkerService;
 import io.functionmesh.compute.auth.AuthHandler;
 import io.functionmesh.compute.functions.models.V1alpha1Function;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionList;
+import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecInputSourceSpecs;
+import io.functionmesh.compute.sinks.models.V1alpha1Sink;
+import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecInputSourceSpecs;
+import io.functionmesh.compute.sources.models.V1alpha1Source;
 import io.functionmesh.compute.util.CommonUtil;
 import io.functionmesh.compute.util.KubernetesUtils;
 import io.functionmesh.compute.util.PackageManagementServiceUtil;
@@ -55,13 +61,17 @@ import io.netty.buffer.Unpooled;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.ws.rs.core.StreamingOutput;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -84,16 +94,23 @@ import org.apache.pulsar.common.functions.FunctionState;
 import org.apache.pulsar.common.functions.Resources;
 import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.common.naming.NamespaceName;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.policies.data.FunctionInstanceStatsDataImpl;
 import org.apache.pulsar.common.policies.data.FunctionInstanceStatsImpl;
 import org.apache.pulsar.common.policies.data.FunctionStatsImpl;
+import org.apache.pulsar.common.policies.data.SubscriptionStats;
 import org.apache.pulsar.common.policies.data.TenantInfo;
+import org.apache.pulsar.common.policies.data.TopicStats;
+import org.apache.pulsar.common.util.ObjectMapperFactory;
 import org.apache.pulsar.common.util.RestException;
+import org.apache.pulsar.functions.instance.InstanceUtils;
 import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.proto.InstanceCommunication.MetricsData;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc.InstanceControlFutureStub;
+import org.apache.pulsar.functions.utils.Actions;
 import org.apache.pulsar.functions.utils.ComponentTypeUtils;
+import org.apache.pulsar.functions.utils.SourceConfigUtils;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.functions.worker.service.api.Component;
 
@@ -147,7 +164,19 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
             String clusterName = worker().getWorkerConfig().getPulsarFunctionsCluster();
             String nameSpaceName = worker().getJobNamespace();
             String hashName = CommonUtil.createObjectName(clusterName, tenant, namespace, componentName);
+            // get component before delete it
+            KubernetesApiResponse response = getResourceApi().get(nameSpaceName, hashName);
             getResourceApi().delete(nameSpaceName, hashName);
+
+            // clean up component after delete
+            try {
+                cleanupComponent(response, tenant, namespace, hashName);
+            } catch (PulsarAdminException e) {
+                // ignore not found error
+                if (!e.getClass().isAssignableFrom(PulsarAdminException.NotFoundException.class)) {
+                    throw e;
+                }
+            }
 
             if (worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
                 PackageManagementServiceUtil.deletePackageFromPackageService(
@@ -163,7 +192,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                 AuthHandler handler = CommonUtil.AUTH_HANDLERS.get(authPluginName);
                 if (handler != null) {
                     try {
-                        handler.cleanUp(worker(), clientRole, clientAuthenticationDataHttps, apiKind, clusterName, tenant,
+                        handler.cleanUp(worker(), clientRole, clientAuthenticationDataHttps, apiKind, clusterName,
+                                tenant,
                                 namespace, componentName);
                     } catch (RuntimeException e) {
                         log.error("clean up auth for {}/{}/{} failed", tenant, namespace, componentName, e);
@@ -878,4 +908,242 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
             });
         }
     }
+
+    private void cleanupComponent(KubernetesApiResponse response, String tenant, String namespace, String componentName)
+            throws PulsarAdminException, InterruptedException {
+        Boolean cleanup = false;
+        String subscriptionName = null;
+        List<String> inputTopics = new ArrayList<>();
+        String topicPattern = null;
+        switch (componentType) {
+            case FUNCTION:
+                V1alpha1Function v1alpha1Function = (V1alpha1Function) extractResponse(response);
+                if (v1alpha1Function.getSpec() != null && v1alpha1Function.getSpec().getInput() != null) {
+                    cleanup = v1alpha1Function.getSpec().getCleanupSubscription();
+                    subscriptionName = v1alpha1Function.getSpec().getSubscriptionName();
+                    topicPattern = v1alpha1Function.getSpec().getInput().getTopicPattern();
+                    inputTopics = v1alpha1Function.getSpec().getInput().getTopics();
+                    if (v1alpha1Function.getSpec().getInput().getSourceSpecs() != null) {
+                        for (Map.Entry<String, V1alpha1FunctionSpecInputSourceSpecs> entry :
+                                v1alpha1Function.getSpec().getInput().getSourceSpecs().entrySet()) {
+                            if (entry.getValue().getIsRegexPattern() != null && entry.getValue().getIsRegexPattern()) {
+                                topicPattern = entry.getKey();
+                            } else {
+                                inputTopics.add(entry.getKey());
+                            }
+                        }
+                    }
+                }
+                break;
+            case SINK:
+                V1alpha1Sink v1alpha1Sink = (V1alpha1Sink) extractResponse(response);
+                if (v1alpha1Sink.getSpec() != null && v1alpha1Sink.getSpec().getInput() != null) {
+                    cleanup = v1alpha1Sink.getSpec().getCleanupSubscription();
+                    subscriptionName = v1alpha1Sink.getSpec().getSubscriptionName();
+                    topicPattern = v1alpha1Sink.getSpec().getInput().getTopicPattern();
+                    inputTopics = v1alpha1Sink.getSpec().getInput().getTopics();
+                    if (v1alpha1Sink.getSpec().getInput().getSourceSpecs() != null) {
+                        for (Map.Entry<String, V1alpha1SinkSpecInputSourceSpecs> entry :
+                                v1alpha1Sink.getSpec().getInput().getSourceSpecs().entrySet()) {
+                            if (entry.getValue().getIsRegexPattern() != null && entry.getValue().getIsRegexPattern()) {
+                                topicPattern = entry.getKey();
+                            } else {
+                                inputTopics.add(entry.getKey());
+                            }
+                        }
+                    }
+                }
+                break;
+            case SOURCE:
+                V1alpha1Source v1alpha1Source = (V1alpha1Source) extractResponse(response);
+                if (v1alpha1Source.getSpec() != null && v1alpha1Source.getSpec().getBatchSourceConfig() != null) {
+                    cleanup = StringUtils.isNotEmpty(
+                            v1alpha1Source.getSpec().getBatchSourceConfig().getDiscoveryTriggererClassName());
+                    subscriptionName =
+                            SourceConfigUtils.computeBatchSourceInstanceSubscriptionName(tenant,
+                                    namespace, componentName);
+                    inputTopics = List.of(SourceConfigUtils.computeBatchSourceIntermediateTopicName(tenant, namespace,
+                            componentName).toString());
+                }
+                break;
+            default:
+                break;
+        }
+        if (Boolean.TRUE.equals(cleanup)) {
+            if (StringUtils.isEmpty(subscriptionName)) {
+                subscriptionName = InstanceUtils.getDefaultSubscriptionName(tenant, namespace, componentName);
+            }
+            if (StringUtils.isNotEmpty(topicPattern)) {
+                log.info("Cleanup subscription {} for topic pattern {}", subscriptionName, topicPattern);
+                deleteSubscription(topicPattern, true, subscriptionName, String.format("Cleaning up subscriptions for function %s", componentName));
+            } else {
+                log.info("Cleanup subscription {} for topics {}", subscriptionName,
+                        StringUtils.join(inputTopics, ","));
+                Map<String, Boolean> processed = new HashMap<>();
+                for (String topic : inputTopics) {
+                    if (!processed.containsKey(topic)) {
+                        deleteSubscription(topic, false, subscriptionName, String.format("Cleaning up subscriptions for function %s", componentName));
+                        processed.put(topic, true);
+                    }
+                }
+            }
+            if (componentType == Function.FunctionDetails.ComponentType.SOURCE) {
+                Actions.newBuilder()
+                        .addAction(
+                                // Unsubscribe and allow time for consumers to close
+                                Actions.Action.builder()
+                                        .actionName(String.format(
+                                                "Removing intermediate topic subscription %s for Batch Source %s",
+                                                subscriptionName, componentName))
+                                        .numRetries(10)
+                                        .sleepBetweenInvocationsMs(1000)
+                                        .supplier(
+                                                getDeleteSubscriptionSupplier(inputTopics.get(0),
+                                                        false,
+                                                        subscriptionName)
+                                        )
+                                        .build())
+                        .addAction(
+                                // Delete topic forcibly regardless whether unsubscribe succeeded or not
+                                Actions.Action.builder()
+                                        .actionName(String.format("Deleting intermediate topic %s for Batch Source %s",
+                                                subscriptionName, componentName))
+                                        .numRetries(10)
+                                        .sleepBetweenInvocationsMs(1000)
+                                        .supplier(getDeleteTopicSupplier(inputTopics.get(0)))
+                                        .build())
+                        .run();
+            }
+        }
+    }
+
+    private void deleteSubscription(String topic, boolean isRegexPattern,
+                                    String subscriptionName, String msg) {
+        try {
+            Actions.newBuilder()
+                    .addAction(
+                            Actions.Action.builder()
+                                    .actionName(msg)
+                                    .numRetries(10)
+                                    .sleepBetweenInvocationsMs(1000)
+                                    .supplier(
+                                            getDeleteSubscriptionSupplier(topic,
+                                                    isRegexPattern,
+                                                    subscriptionName)
+                                    )
+                                    .build())
+                    .run();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Supplier<Actions.ActionResult> getDeleteSubscriptionSupplier(
+            String topic, boolean isRegex, String subscriptionName) {
+        return () -> {
+            try {
+                if (isRegex) {
+                    worker().getBrokerAdmin().namespaces().unsubscribeNamespace(TopicName
+                            .get(topic).getNamespace(), subscriptionName);
+                } else {
+                    worker().getBrokerAdmin().topics().deleteSubscription(topic,
+                            subscriptionName);
+                }
+            } catch (PulsarAdminException e) {
+                if (e instanceof PulsarAdminException.NotFoundException) {
+                    return Actions.ActionResult.builder()
+                            .success(true)
+                            .build();
+                } else {
+                    String errorMsg = e.getHttpError() != null ? e.getHttpError() : e.getMessage();
+                    if (isRegex) {
+                        return Actions.ActionResult.builder()
+                                .success(false)
+                                .errorMsg(errorMsg)
+                                .build();
+                    }
+                    // for debugging purposes
+                    List<Map<String, String>> existingConsumers = Collections.emptyList();
+                    SubscriptionStats sub = null;
+                    try {
+                        TopicStats stats = worker().getBrokerAdmin().topics().getStats(topic);
+                        sub = stats.getSubscriptions().get(subscriptionName);
+                        if (sub != null) {
+                            existingConsumers = sub.getConsumers().stream()
+                                    .map(consumerStats -> consumerStats.getMetadata())
+                                    .collect(Collectors.toList());
+                        }
+                    } catch (PulsarAdminException e1) {
+
+                    }
+
+                    String finalErrorMsg;
+                    if (sub != null) {
+                        try {
+                            ObjectMapper objectMapper = new ObjectMapper();
+                            finalErrorMsg = String.format("%s - existing consumers: %s",
+                                    errorMsg, objectMapper.writer().writeValueAsString(existingConsumers));
+                        } catch (JsonProcessingException jsonProcessingException) {
+                            finalErrorMsg = errorMsg;
+                        }
+                    } else {
+                        finalErrorMsg = errorMsg;
+                    }
+                    return Actions.ActionResult.builder()
+                            .success(false)
+                            .errorMsg(finalErrorMsg)
+                            .build();
+                }
+            }
+
+            return Actions.ActionResult.builder()
+                    .success(true)
+                    .build();
+        };
+    }
+
+    private Supplier<Actions.ActionResult> getDeleteTopicSupplier(String topic) {
+        return () -> {
+            try {
+                worker().getBrokerAdmin().topics().delete(topic, true);
+            } catch (PulsarAdminException e) {
+                if (e instanceof PulsarAdminException.NotFoundException) {
+                    return Actions.ActionResult.builder()
+                            .success(true)
+                            .build();
+                } else {
+                    // for debugging purposes
+                    TopicStats stats = null;
+                    try {
+                        stats = worker().getBrokerAdmin().topics().getStats(topic);
+                    } catch (PulsarAdminException e1) {
+
+                    }
+
+                    String errorMsg = e.getHttpError() != null ? e.getHttpError() : e.getMessage();
+                    String finalErrorMsg;
+                    if (stats != null) {
+                        try {
+                            finalErrorMsg = String.format("%s - topic stats: %s",
+                                    errorMsg, ObjectMapperFactory.getMapper().writer().writeValueAsString(stats));
+                        } catch (JsonProcessingException jsonProcessingException) {
+                            finalErrorMsg = errorMsg;
+                        }
+                    } else {
+                        finalErrorMsg = errorMsg;
+                    }
+
+                    return Actions.ActionResult.builder()
+                            .success(false)
+                            .errorMsg(finalErrorMsg)
+                            .build();
+                }
+            }
+
+            return Actions.ActionResult.builder()
+                    .success(true)
+                    .build();
+        };
+    }
+
 }

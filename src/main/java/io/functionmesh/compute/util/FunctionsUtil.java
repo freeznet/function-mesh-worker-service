@@ -25,6 +25,7 @@ import static io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodVp
 import static io.functionmesh.compute.models.SecretRef.KEY_KEY;
 import static io.functionmesh.compute.models.SecretRef.PATH_KEY;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
+import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.DEFAULT_FUNCTION_EXECUTABLE;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
 import static io.functionmesh.compute.util.CommonUtil.downloadPackageFile;
@@ -553,6 +554,14 @@ public class FunctionsUtil {
         }
 
         v1alpha1Function.setSpec(v1alpha1FunctionSpec);
+
+        Map<String, String> currentAnnotations = v1alpha1Function.getMetadata().getAnnotations();
+        if (currentAnnotations == null) {
+            currentAnnotations = new HashMap<>();
+        }
+        currentAnnotations.put(ANNOTATION_NEED_CLEANUP, "false");
+        v1alpha1Function.getMetadata().setAnnotations(currentAnnotations);
+
 
         return v1alpha1Function;
     }

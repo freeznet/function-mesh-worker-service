@@ -25,6 +25,7 @@ import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdateP
 import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdatePolicy.UpdateModeEnum.OFF;
 import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdatePolicy.UpdateModeEnum.RECREATE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
+import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
 import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.downloadPackageFile;
@@ -501,6 +502,13 @@ public class SinksUtil {
         }
 
         v1alpha1Sink.setSpec(v1alpha1SinkSpec);
+
+        Map<String, String> currentAnnotations = v1alpha1Sink.getMetadata().getAnnotations();
+        if (currentAnnotations == null) {
+            currentAnnotations = new HashMap<>();
+        }
+        currentAnnotations.put(ANNOTATION_NEED_CLEANUP, "false");
+        v1alpha1Sink.getMetadata().setAnnotations(currentAnnotations);
 
         return v1alpha1Sink;
     }
