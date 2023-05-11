@@ -522,6 +522,7 @@ public class FunctionsUtil {
         WindowConfig windowConfig = functionConfig.getWindowConfig();
         if (windowConfig != null) {
             V1alpha1FunctionSpecWindowConfig windowConfigSpec = new V1alpha1FunctionSpecWindowConfig();
+            windowConfigSpec.setActualWindowFunctionClassName(functionConfig.getClassName());
             windowConfigSpec.setLateDataTopic(windowConfig.getLateDataTopic());
             windowConfigSpec.setMaxLagMs(windowConfig.getMaxLagMs());
             windowConfigSpec.setWindowLengthCount(windowConfig.getWindowLengthCount());
@@ -787,6 +788,18 @@ public class FunctionsUtil {
             if (Strings.isNotEmpty(v1alpha1FunctionSpec.getDeadLetterTopic())) {
                 functionConfig.setDeadLetterTopic(v1alpha1FunctionSpec.getDeadLetterTopic());
             }
+        }
+        if (v1alpha1FunctionSpec.getWindowConfig() != null) {
+            WindowConfig windowConfig = new WindowConfig();
+            windowConfig.setWindowLengthCount(v1alpha1FunctionSpec.getWindowConfig().getWindowLengthCount());
+            windowConfig.setWindowLengthDurationMs(v1alpha1FunctionSpec.getWindowConfig().getWindowLengthDurationMs());
+            windowConfig.setSlidingIntervalCount(v1alpha1FunctionSpec.getWindowConfig().getSlidingIntervalCount());
+            windowConfig.setSlidingIntervalDurationMs(v1alpha1FunctionSpec.getWindowConfig().getSlidingIntervalDurationMs());
+            windowConfig.setLateDataTopic(v1alpha1FunctionSpec.getWindowConfig().getLateDataTopic());
+            windowConfig.setMaxLagMs(v1alpha1FunctionSpec.getWindowConfig().getMaxLagMs());
+            windowConfig.setWatermarkEmitIntervalMs(v1alpha1FunctionSpec.getWindowConfig().getWatermarkEmitIntervalMs());
+            windowConfig.setTimestampExtractorClassName(v1alpha1FunctionSpec.getWindowConfig().getTimestampExtractorClassName());
+            functionConfig.setWindowConfig(windowConfig);
         }
         functionConfig.setClassName(v1alpha1FunctionSpec.getClassName());
         if (v1alpha1FunctionSpec.getFuncConfig() != null) {
