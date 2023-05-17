@@ -107,6 +107,7 @@ public class CommonUtil {
     public static final String COMPONENT_LABEL_CLAIM = "compute.functionmesh.io/pulsar-component";
     public static final String ANNOTATION_MANAGED = "compute.functionmesh.io/managed";
     public static final String ANNOTATION_NEED_CLEANUP = "compute.functionmesh.io/need-cleanup";
+    public static final String ANNOTATION_CONNECTOR_TYPE = "compute.functionmesh.io/connector-type";
     private static final String CLUSTER_NAME_ENV = "clusterName";
 
     public static String getClusterNameEnv() {

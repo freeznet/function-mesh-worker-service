@@ -24,6 +24,7 @@ import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdateP
 import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdatePolicy.UpdateModeEnum.INITIAL;
 import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdatePolicy.UpdateModeEnum.OFF;
 import static io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaUpdatePolicy.UpdateModeEnum.RECREATE;
+import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_CONNECTOR_TYPE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
@@ -110,13 +111,6 @@ public class SinksUtil {
         String clusterName = CommonUtil.getClusterName(cluster, customRuntimeOptions);
         String serviceAccountName = customRuntimeOptions.getServiceAccountName();
 
-        String location =
-                String.format(
-                        "%s/%s/%s",
-                        sinkConfig.getTenant(), sinkConfig.getNamespace(), sinkConfig.getName());
-        if (StringUtils.isNotEmpty(sinkPkgUrl)) {
-            location = sinkPkgUrl;
-        }
         String archive = sinkConfig.getArchive();
         SinkConfigUtils.ExtractedSinkDetails extractedSinkDetails =
                 new SinkConfigUtils.ExtractedSinkDetails(
@@ -184,7 +178,16 @@ public class SinksUtil {
         }
         v1alpha1SinkSpecJava.setExtraDependenciesDir(extraDependenciesDir);
 
-        if (connectorsManager != null && archive.startsWith(BUILTIN)) {
+        /** archive only has three formats:
+         * 1. builtin://xxx
+         * 2. function/sink/source://xxx, the sinkPkgUrl will be set with same value as archive
+         * 3. raw file path, in this case, a package will be created based on the file and sinkPkgUrl will be set,
+         */
+        if (archive.startsWith(BUILTIN)) {
+            if (connectorsManager == null) {
+                log.warn("cannot find built-in connector, connectorsManager is null");
+                throw new RestException(Response.Status.BAD_REQUEST, String.format("connector manager is null"));
+            }
             String connectorType = archive.replaceFirst("^builtin://", "");
             FunctionMeshConnectorDefinition definition = connectorsManager.getConnectorDefinition(connectorType);
             if (definition != null) {
@@ -201,12 +204,19 @@ public class SinksUtil {
                 throw new RestException(Response.Status.BAD_REQUEST,
                         String.format("connectorType %s is not supported yet", connectorType));
             }
-        } else if (StringUtils.isNotEmpty(sinkConfig.getArchive())) {
+        } else if (Utils.hasPackageTypePrefix((archive))) {
             v1alpha1SinkSpecJava.setJar(
-                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), sinkConfig.getArchive()));
-            if (StringUtils.isNotEmpty(sinkPkgUrl)) {
-                v1alpha1SinkSpecJava.setJarLocation(location);
+                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive));
+            v1alpha1SinkSpecJava.setJarLocation(archive);
+            v1alpha1SinkSpec.setJava(v1alpha1SinkSpecJava);
+            extractedSinkDetails.setSinkClassName(sinkConfig.getClassName());
+        } else {
+            if (Strings.isEmpty(sinkPkgUrl)) {
+                throw new RestException(Response.Status.BAD_REQUEST, "neither connector type nor archive is specified");
             }
+            v1alpha1SinkSpecJava.setJar(
+                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive));
+            v1alpha1SinkSpecJava.setJarLocation(sinkPkgUrl);
             v1alpha1SinkSpec.setJava(v1alpha1SinkSpecJava);
             extractedSinkDetails.setSinkClassName(sinkConfig.getClassName());
         }
@@ -508,6 +518,9 @@ public class SinksUtil {
             currentAnnotations = new HashMap<>();
         }
         currentAnnotations.put(ANNOTATION_NEED_CLEANUP, "false");
+        if (archive.startsWith(BUILTIN)) {
+            currentAnnotations.put(ANNOTATION_CONNECTOR_TYPE, archive);
+        }
         v1alpha1Sink.getMetadata().setAnnotations(currentAnnotations);
 
         return v1alpha1Sink;
@@ -540,6 +553,10 @@ public class SinksUtil {
         V1alpha1SinkSpecInput v1alpha1SinkSpecInput = v1alpha1SinkSpec.getInput();
         if (v1alpha1SinkSpecInput == null) {
             throw new RestException(Response.Status.BAD_REQUEST, "SinkSpec CRD without Input defined.");
+        }
+
+        if (Strings.isNotEmpty(v1alpha1SinkSpec.getImage())) {
+            customRuntimeOptions.setRunnerImage(v1alpha1SinkSpec.getImage());
         }
         if (Strings.isNotEmpty(v1alpha1SinkSpecInput.getTypeClassName())) {
             customRuntimeOptions.setInputTypeClassName(v1alpha1SinkSpecInput.getTypeClassName());
@@ -618,8 +635,12 @@ public class SinksUtil {
                 consumerConfig.setSchemaType(sourceSpecs.getSchemaType());
                 consumerConfig.setSerdeClassName(sourceSpecs.getSerdeClassname());
                 consumerConfig.setReceiverQueueSize(sourceSpecs.getReceiverQueueSize());
-                consumerConfig.setSchemaProperties(sourceSpecs.getSchemaProperties());
-                consumerConfig.setConsumerProperties(sourceSpecs.getConsumerProperties());
+                if (sourceSpecs.getSchemaProperties() != null) {
+                    consumerConfig.setSchemaProperties(sourceSpecs.getSchemaProperties());
+                }
+                if (sourceSpecs.getConsumerProperties() != null) {
+                    consumerConfig.setConsumerProperties(sourceSpecs.getConsumerProperties());
+                }
                 if (sourceSpecs.getCryptoConfig() != null) {
                     // TODO: convert CryptoConfig to function config
                 }
@@ -689,8 +710,19 @@ public class SinksUtil {
             sinkConfig.setRuntimeFlags(v1alpha1SinkSpec.getRuntimeFlags());
         }
 
-        if (v1alpha1SinkSpec.getJava() != null && Strings.isNotEmpty(v1alpha1SinkSpec.getJava().getJar())) {
-            sinkConfig.setArchive(v1alpha1SinkSpec.getJava().getJar());
+        if (v1alpha1SinkSpec.getJava() != null) {
+            try {
+                sinkConfig.setArchive(v1alpha1Sink.getMetadata().getAnnotations().get(ANNOTATION_CONNECTOR_TYPE));
+                if (Strings.isEmpty(sinkConfig.getArchive())) {
+                    throw new IllegalArgumentException();
+                }
+            } catch (Exception e) {
+                if (Strings.isNotEmpty(v1alpha1SinkSpec.getJava().getJarLocation())) {
+                    sinkConfig.setArchive(v1alpha1SinkSpec.getJava().getJarLocation());
+                } else {
+                    sinkConfig.setArchive(v1alpha1SinkSpec.getJava().getJar());
+                }
+            }
         }
 
         return sinkConfig;

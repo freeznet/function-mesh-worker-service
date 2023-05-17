@@ -134,7 +134,7 @@ public class SinksUtilTest {
 
         V1alpha1Sink actualV1alpha1Sink =
                 SinksUtil.createV1alpha1SkinFromSinkConfig(
-                        kind, group, version, componentName, null, uploadedInputStream, sinkConfig, null,
+                        kind, group, version, componentName, "function://public/default/test-sink", uploadedInputStream, sinkConfig, null,
                         null, meshWorkerService);
 
         Assert.assertEquals(actualV1alpha1Sink.getKind(), kind);
@@ -227,7 +227,7 @@ public class SinksUtilTest {
 
         V1alpha1Sink actualV1alpha1Sink =
                 SinksUtil.createV1alpha1SkinFromSinkConfig(
-                        kind, group, version, componentName, null, uploadedInputStream, sinkConfig, null,
+                        kind, group, version, componentName, "function://public/default/test", uploadedInputStream, sinkConfig, null,
                         null, meshWorkerService);
 
         SinkConfig newSinkConfig =
@@ -237,7 +237,6 @@ public class SinksUtilTest {
         Assert.assertEquals(sinkConfig.getNamespace(), newSinkConfig.getNamespace());
         Assert.assertEquals(sinkConfig.getTenant(), newSinkConfig.getTenant());
         Assert.assertEquals(sinkConfig.getConfigs(), newSinkConfig.getConfigs());
-        Assert.assertEquals(sinkConfig.getArchive(), newSinkConfig.getArchive());
         Assert.assertEquals(sinkConfig.getResources(), newSinkConfig.getResources());
         Assert.assertEquals(sinkConfig.getClassName(), newSinkConfig.getClassName());
         Assert.assertEquals(sinkConfig.getAutoAck(), newSinkConfig.getAutoAck());

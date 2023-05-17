@@ -240,7 +240,7 @@ public class SourcesImplV2Test {
         V1alpha1Source mockV1alpha1Source = mock(V1alpha1Source.class);
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Source);
         try {
-            this.resource.registerSource(tenant, namespace, sourceName, null, null, null, sourceConfig, null, null);
+            this.resource.registerSource(tenant, namespace, sourceName, null, null, "function://public/default/test-source", sourceConfig, null, null);
         } catch (RestException restException) {
             Assert.fail(
                     String.format("register {}/{}/{} source failed, error message: {}", tenant, namespace, sourceName,
@@ -248,7 +248,7 @@ public class SourcesImplV2Test {
         }
 
         V1alpha1Source v1alpha1SourceOrigin =
-                SourcesUtil.createV1alpha1SourceFromSourceConfig(apiSourceKind, apiGroup, apiVersion, sourceName, null,
+                SourcesUtil.createV1alpha1SourceFromSourceConfig(apiSourceKind, apiGroup, apiVersion, sourceName, "function://public/default/test-source",
                         null,
                         sourceConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
                         meshWorkerService);
@@ -261,25 +261,27 @@ public class SourcesImplV2Test {
     @Test
     public void updateSourceTest() {
         SourceConfig sourceConfig = buildSourceConfig();
+        V1alpha1Source v1alpha1SourceOrigin =
+                SourcesUtil.createV1alpha1SourceFromSourceConfig(apiSourceKind, apiGroup, apiVersion, sourceName, "function://public/default/test-source",
+                        null,
+                        sourceConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
+                        meshWorkerService);
+        SourceConfig updateConfig = buildUpdateSourceConfig();
         V1alpha1Source mockV1alpha1Source = mock(V1alpha1Source.class);
         V1ObjectMeta mockV1ObjectMeta = mock(V1ObjectMeta.class);
 
         when(mockV1alpha1Source.getMetadata()).thenReturn(mockV1ObjectMeta);
         when(mockV1alpha1Source.getMetadata().getResourceVersion()).thenReturn(resourceVersionPre);
         when(mockV1alpha1Source.getMetadata().getLabels()).thenReturn(Collections.singletonMap("foo", "bar"));
+        when(mockV1alpha1Source.getSpec()).thenReturn(v1alpha1SourceOrigin.getSpec());
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Source);
         try {
-            this.resource.updateSource(tenant, namespace, sourceName, null, null, null, sourceConfig, null, null, null);
+            this.resource.updateSource(tenant, namespace, sourceName, null, null, null, updateConfig, null, null, null);
         } catch (RestException restException) {
             Assert.fail(String.format("update {}/{}/{} source failed, error message: {}", tenant, namespace, sourceName,
                     restException.getMessage()));
         }
 
-        V1alpha1Source v1alpha1SourceOrigin =
-                SourcesUtil.createV1alpha1SourceFromSourceConfig(apiSourceKind, apiGroup, apiVersion, sourceName, null,
-                        null,
-                        sourceConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
-                        meshWorkerService);
         ArgumentCaptor<V1alpha1Source> v1alpha1SourceArgumentCaptor = ArgumentCaptor.forClass(V1alpha1Source.class);
         verify(mockedKubernetesApi).update(v1alpha1SourceArgumentCaptor.capture());
         V1alpha1Source v1alpha1SourceFinal = v1alpha1SourceArgumentCaptor.getValue();
@@ -333,11 +335,21 @@ public class SourcesImplV2Test {
 
         CustomRuntimeOptions customRuntimeOptions = new CustomRuntimeOptions();
         customRuntimeOptions.setClusterName(pulsarFunctionCluster);
+        customRuntimeOptions.setOutputTypeClassName("String");
         customRuntimeOptions.setRunnerImage(runnerImage);
         customRuntimeOptions.setServiceAccountName(serviceAccountName);
         customRuntimeOptions.setEnv(env.stream().collect(
                 Collectors.toMap(V1alpha1SourceSpecPodEnv::getName, V1alpha1SourceSpecPodEnv::getValue)));
         sourceConfig.setCustomRuntimeOptions(new Gson().toJson(customRuntimeOptions));
+        return sourceConfig;
+    }
+
+    private SourceConfig buildUpdateSourceConfig() {
+        SourceConfig sourceConfig = new SourceConfig();
+        sourceConfig.setTenant(tenant);
+        sourceConfig.setNamespace(namespace);
+        sourceConfig.setName(sourceName);
+        sourceConfig.setResources(new Resources(4.0, 4096L, 1024L * 10));
         return sourceConfig;
     }
 
@@ -380,10 +392,22 @@ public class SourcesImplV2Test {
 
 
     private void verifyParameterForUpdate(V1alpha1Source v1alpha1SourceOrigin, V1alpha1Source v1alpha1SourceFinal) {
-        v1alpha1SourceOrigin.getSpec().setImage(runnerImage);
-        v1alpha1SourceOrigin.getSpec().getPod().setServiceAccountName(serviceAccountName);
         v1alpha1SourceOrigin.getMetadata().setResourceVersion("899291");
         //if authenticationEnabled=true,v1alpha1SourceOrigin should set pod policy
+        Assert.assertEquals(new V1alpha1SourceSpecPodResources().limits(new HashMap<>(){
+            {
+                put(CPU_KEY, 4);
+                // 4096 + padding
+                put(MEMORY_KEY, 4506L);
+            }
+        }).requests(new HashMap<>() {
+            {
+                put(CPU_KEY, 4);
+                put(MEMORY_KEY, 4096L);
+            }
+        }).toString(), v1alpha1SourceFinal.getSpec().getResources().toString());
+        v1alpha1SourceOrigin.getSpec().setResources(v1alpha1SourceFinal.getSpec().getResources());
+        v1alpha1SourceOrigin.getSpec().getJava().setJar("/tmp/test-source");
 
         Assert.assertEquals(v1alpha1SourceOrigin, v1alpha1SourceFinal);
     }
@@ -434,7 +458,7 @@ public class SourcesImplV2Test {
                 .tenant(tenant)
                 .parallelism(1)
                 .processingGuarantees(FunctionConfig.ProcessingGuarantees.ATLEAST_ONCE)
-                .archive("test.jar")
+                .archive("public/default/test")
                 .className("org.example.functions.testFunction")
                 .resources(resourcesExpect)
                 .customRuntimeOptions(customRuntimeOptionsJSON)

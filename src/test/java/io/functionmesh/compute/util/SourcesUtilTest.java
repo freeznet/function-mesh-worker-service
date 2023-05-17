@@ -135,7 +135,7 @@ public class SourcesUtilTest {
                 .thenReturn(meshWorkerServiceCustomConfig);
 
         V1alpha1Source v1alpha1Source = SourcesUtil.createV1alpha1SourceFromSourceConfig(kind, group, version,
-                componentName, null, uploadedInputStream, sourceConfig, null,
+                componentName, "function://public/default/test-source", uploadedInputStream, sourceConfig, null,
                 null, meshWorkerService);
 
         Assert.assertEquals(v1alpha1Source.getKind(), kind);
@@ -223,7 +223,7 @@ public class SourcesUtilTest {
         PowerMockito.when(meshWorkerService.getWorkerConfig()).thenReturn(workerConfig);
 
         V1alpha1Source v1alpha1Source = SourcesUtil.createV1alpha1SourceFromSourceConfig(kind, group, version,
-                componentName, null, uploadedInputStream, sourceConfig, null,
+                componentName, "function://public/default/test-source", uploadedInputStream, sourceConfig, null,
                 null, meshWorkerService);
 
         SourceConfig newSourceConfig = SourcesUtil.createSourceConfigFromV1alpha1Source(tenant, namespace,
@@ -233,7 +233,6 @@ public class SourcesUtilTest {
         Assert.assertEquals(sourceConfig.getNamespace(), newSourceConfig.getNamespace());
         Assert.assertEquals(sourceConfig.getTenant(), newSourceConfig.getTenant());
         Assert.assertEquals(sourceConfig.getConfigs(), newSourceConfig.getConfigs());
-        Assert.assertEquals(sourceConfig.getArchive(), newSourceConfig.getArchive());
         Assert.assertEquals(sourceConfig.getResources(), newSourceConfig.getResources());
         Assert.assertEquals(sourceConfig.getClassName(), newSourceConfig.getClassName());
         Assert.assertEquals(expectedCustomRuntimeOptions, newSourceConfig.getCustomRuntimeOptions());

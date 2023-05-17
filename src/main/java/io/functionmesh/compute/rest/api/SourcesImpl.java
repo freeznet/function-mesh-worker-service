@@ -21,6 +21,7 @@ package io.functionmesh.compute.rest.api;
 import static io.functionmesh.compute.util.KubernetesUtils.buildTlsConfigMap;
 import static io.functionmesh.compute.util.KubernetesUtils.validateResourceOwner;
 import static io.functionmesh.compute.util.KubernetesUtils.validateStatefulSet;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import io.functionmesh.compute.MeshWorkerService;
@@ -76,6 +77,7 @@ import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.proto.InstanceCommunication;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc;
 import org.apache.pulsar.functions.utils.ComponentTypeUtils;
+import org.apache.pulsar.functions.utils.SourceConfigUtils;
 import org.apache.pulsar.functions.worker.service.api.Sources;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 
@@ -233,6 +235,33 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                 throw new RestException(Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
             }
         }
+
+        String nameSpaceName = worker().getJobNamespace();
+        String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sourceName);
+        V1alpha1Source v1alpha1SourcePre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
+        if (v1alpha1SourcePre.getMetadata() == null || v1alpha1SourcePre.getMetadata().getLabels() == null) {
+            log.error("update {}/{}/{} source failed, the source resource cannot be found", tenant, namespace,
+                    sourceName);
+            throw new RestException(Response.Status.NOT_FOUND, "This source resource was not found");
+        }
+        SourceConfig existingSourceConfig = SourcesUtil.createSourceConfigFromV1alpha1Source(tenant, namespace,
+                sourceName, v1alpha1SourcePre, worker());
+        SourceConfig mergedConfig;
+        try {
+            mergedConfig = SourceConfigUtils.validateUpdate(existingSourceConfig, sourceConfig);
+        } catch (Exception e) {
+            throw new RestException(Response.Status.BAD_REQUEST, e.getMessage());
+        }
+
+        if (existingSourceConfig.equals(mergedConfig) && isBlank(packageURL) && uploadedInputStream == null) {
+            log.error("{}/{}/{} Update contains no changes", tenant, namespace, sourceName);
+            throw new RestException(Response.Status.BAD_REQUEST, "Update contains no change");
+        }
+
+        if (StringUtils.isEmpty(mergedConfig.getArchive())) {
+            mergedConfig.setArchive(existingSourceConfig.getArchive());
+        }
+
         try {
             String cluster = worker().getWorkerConfig().getPulsarFunctionsCluster();
             V1alpha1Source v1alpha1Source = SourcesUtil
@@ -243,18 +272,10 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                             sourceName,
                             packageURL,
                             uploadedInputStream,
-                            sourceConfig,
+                            mergedConfig,
                             this.meshWorkerServiceSupplier.get().getConnectorsManager(),
                             cluster, worker());
 
-            String nameSpaceName = worker().getJobNamespace();
-            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sourceName);
-            V1alpha1Source v1alpha1SourcePre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
-            if (v1alpha1SourcePre.getMetadata() == null || v1alpha1SourcePre.getMetadata().getLabels() == null) {
-                log.error("update {}/{}/{} source failed, the source resource cannot be found", tenant, namespace,
-                        sourceName);
-                throw new RestException(Response.Status.NOT_FOUND, "This source resource was not found");
-            }
 
             v1alpha1Source.getMetadata().setNamespace(worker().getJobNamespace());
             v1alpha1Source.getMetadata().setResourceVersion(v1alpha1SourcePre.getMetadata().getResourceVersion());

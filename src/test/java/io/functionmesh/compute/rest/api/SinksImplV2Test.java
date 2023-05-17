@@ -241,14 +241,14 @@ public class SinksImplV2Test {
         V1alpha1Sink mockV1alpha1Sink = mock(V1alpha1Sink.class);
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Sink);
         try {
-            this.resource.registerSink(tenant, namespace, sinkName, null, null, null, sinkConfig, null, null);
+            this.resource.registerSink(tenant, namespace, sinkName, null, null, "function://public/default/test-sink", sinkConfig, null, null);
         } catch (RestException restException) {
             Assert.fail(String.format("register {}/{}/{} sink failed, error message: {}", tenant, namespace, sinkName,
                     restException.getMessage()));
         }
 
         V1alpha1Sink v1alpha1SinkOrigin =
-                SinksUtil.createV1alpha1SkinFromSinkConfig(apiSinkKind, apiGroup, apiVersion, sinkName, null, null,
+                SinksUtil.createV1alpha1SkinFromSinkConfig(apiSinkKind, apiGroup, apiVersion, sinkName, "function://public/default/test-sink", null,
                         sinkConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
                         meshWorkerService);
         ArgumentCaptor<V1alpha1Sink> v1alpha1SinkArgumentCaptor = ArgumentCaptor.forClass(V1alpha1Sink.class);
@@ -260,24 +260,26 @@ public class SinksImplV2Test {
     @Test
     public void updateSinkTest() {
         SinkConfig sinkConfig = buildSinkConfig();
+        V1alpha1Sink v1alpha1SinkOrigin =
+                SinksUtil.createV1alpha1SkinFromSinkConfig(apiSinkKind, apiGroup, apiVersion, sinkName, "function://public/default/test-sink", null,
+                        sinkConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
+                        meshWorkerService);
+        SinkConfig updateConfig = buildUpdateSinkConfig();
         V1alpha1Sink mockV1alpha1Sink = mock(V1alpha1Sink.class);
         V1ObjectMeta mockV1ObjectMeta = mock(V1ObjectMeta.class);
 
         when(mockV1alpha1Sink.getMetadata()).thenReturn(mockV1ObjectMeta);
         when(mockV1alpha1Sink.getMetadata().getResourceVersion()).thenReturn(resourceVersionPre);
         when(mockV1alpha1Sink.getMetadata().getLabels()).thenReturn(Collections.singletonMap("foo", "bar"));
+        when(mockV1alpha1Sink.getSpec()).thenReturn(v1alpha1SinkOrigin.getSpec());
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Sink);
         try {
-            this.resource.updateSink(tenant, namespace, sinkName, null, null, null, sinkConfig, null, null, null);
+            this.resource.updateSink(tenant, namespace, sinkName, null, null, null, updateConfig, null, null, null);
         } catch (RestException restException) {
             Assert.fail(String.format("update {}/{}/{} sink failed, error message: {}", tenant, namespace, sinkName,
                     restException.getMessage()));
         }
 
-        V1alpha1Sink v1alpha1SinkOrigin =
-                SinksUtil.createV1alpha1SkinFromSinkConfig(apiSinkKind, apiGroup, apiVersion, sinkName, null, null,
-                        sinkConfig, null, meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(),
-                        meshWorkerService);
         ArgumentCaptor<V1alpha1Sink> v1alpha1SinkArgumentCaptor = ArgumentCaptor.forClass(V1alpha1Sink.class);
         verify(mockedKubernetesApi).update(v1alpha1SinkArgumentCaptor.capture());
         V1alpha1Sink v1alpha1SinkFinal = v1alpha1SinkArgumentCaptor.getValue();
@@ -331,6 +333,7 @@ public class SinksImplV2Test {
         sinkConfig.setResources(new Resources(2.0, 4096L, 1024L * 10));
 
         CustomRuntimeOptions customRuntimeOptions = new CustomRuntimeOptions();
+        customRuntimeOptions.setInputTypeClassName("String");
         customRuntimeOptions.setClusterName(pulsarFunctionCluster);
         customRuntimeOptions.setRunnerImage(runnerImage);
         customRuntimeOptions.setServiceAccountName(serviceAccountName);
@@ -339,6 +342,16 @@ public class SinksImplV2Test {
         sinkConfig.setCustomRuntimeOptions(new Gson().toJson(customRuntimeOptions));
         return sinkConfig;
     }
+
+    private SinkConfig buildUpdateSinkConfig() {
+        SinkConfig sinkConfig = new SinkConfig();
+        sinkConfig.setTenant(tenant);
+        sinkConfig.setNamespace(namespace);
+        sinkConfig.setName(sinkName);
+        sinkConfig.setResources(new Resources(4.0, 4096L, 1024L * 10));
+        return sinkConfig;
+    }
+
 
     private V1alpha1SinkSpec buildV1alpha1SinkSpecForGetSinkInfo() {
         V1alpha1SinkSpec mockSinkSpec = mock(V1alpha1SinkSpec.class);
@@ -390,9 +403,22 @@ public class SinksImplV2Test {
 
 
     private void verifyParameterForUpdate(V1alpha1Sink v1alpha1SinkOrigin, V1alpha1Sink v1alpha1SinkFinal) {
-        v1alpha1SinkOrigin.getSpec().setImage(runnerImage);
-        v1alpha1SinkOrigin.getSpec().getPod().setServiceAccountName(serviceAccountName);
         v1alpha1SinkOrigin.getMetadata().setResourceVersion("899291");
+        Assert.assertEquals(new V1alpha1SinkSpecPodResources().limits(new HashMap<>(){
+            {
+                put(CPU_KEY, 4);
+                // 4096 + padding
+                put(MEMORY_KEY, 4506L);
+            }
+        }).requests(new HashMap<>() {
+            {
+                put(CPU_KEY, 4);
+                put(MEMORY_KEY, 4096L);
+            }
+        }).toString(), v1alpha1SinkFinal.getSpec().getResources().toString());
+        v1alpha1SinkOrigin.getSpec().setResources(v1alpha1SinkFinal.getSpec().getResources());
+        // get from `buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive))`
+        v1alpha1SinkOrigin.getSpec().getJava().setJar("/tmp/test-sink");
         //if authenticationEnabled=true,v1alpha1SinkOrigin should set pod policy
 
         Assert.assertEquals(v1alpha1SinkOrigin, v1alpha1SinkFinal);
@@ -449,7 +475,7 @@ public class SinksImplV2Test {
                 .autoAck(false)
                 .timeoutMs(100L)
                 .sourceSubscriptionName(outputTopic)
-                .archive("test.jar")
+                .archive("public/default/test")
                 .inputSpecs(inputSpecsExpect)
                 .inputs(inputSpecsExpect.keySet())
                 .maxMessageRetries(3)

@@ -349,6 +349,12 @@ public class FunctionImplV2Test {
     @Test
     public void updateFunctionTest() {
         FunctionConfig functionConfig = mockFunctionConfig();
+        V1alpha1Function v1alpha1FunctionOrigin =
+                FunctionsUtil.createV1alpha1FunctionFromFunctionConfig(apiFunctionKind, API_GROUP, apiVersion, function,
+                        functionConfig.getJar(), functionConfig,
+                        meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(), meshWorkerService);
+
+        FunctionConfig updateConfig = mockUpdateConfig();
 
         V1alpha1Function functionResource = mock(V1alpha1Function.class);
         V1ObjectMeta functionMeta = mock(V1ObjectMeta.class);
@@ -356,12 +362,13 @@ public class FunctionImplV2Test {
         when(functionResource.getMetadata()).thenReturn(functionMeta);
         when(functionResource.getMetadata().getResourceVersion()).thenReturn("899291");
         when(functionResource.getMetadata().getLabels()).thenReturn(Collections.singletonMap("foo", "bar"));
+        when(functionResource.getSpec()).thenReturn(v1alpha1FunctionOrigin.getSpec());
 
         when(mockedKubernetesApiResponse.getObject()).thenReturn(functionResource);
 
         try {
             this.resource.updateFunction(tenant, namespace, function, null, null, functionConfig.getJar(),
-                    functionConfig, null, null, null);
+                    updateConfig, null, null, null);
         } catch (
                 RestException restException) {
             Assert.fail(String.format(
@@ -371,11 +378,6 @@ public class FunctionImplV2Test {
                     function,
                     restException.getMessage()));
         }
-
-        V1alpha1Function v1alpha1FunctionOrigin =
-                FunctionsUtil.createV1alpha1FunctionFromFunctionConfig(apiFunctionKind, API_GROUP, apiVersion, function,
-                        functionConfig.getJar(), functionConfig,
-                        meshWorkerService.getWorkerConfig().getPulsarFunctionsCluster(), meshWorkerService);
 
         ArgumentCaptor<V1alpha1Function> v1alpha1FunctionArgumentCaptor =
                 ArgumentCaptor.forClass(V1alpha1Function.class);
@@ -455,6 +457,24 @@ public class FunctionImplV2Test {
         return functionConfig;
     }
 
+    private FunctionConfig mockUpdateConfig() {
+        FunctionConfig functionConfig = mock(FunctionConfig.class);
+
+        when(functionConfig.getTenant()).thenReturn(tenant);
+        when(functionConfig.getNamespace()).thenReturn(namespace);
+        when(functionConfig.getName()).thenReturn(function);
+        when(functionConfig.getRetainKeyOrdering()).thenReturn(true);
+        when(functionConfig.getMaxMessageRetries()).thenReturn(null);
+        when(functionConfig.getMaxPendingAsyncRequests()).thenReturn(null);
+        when(functionConfig.getParallelism()).thenReturn(null);
+        when(functionConfig.getTimeoutMs()).thenReturn(1000L);
+
+        Resources resources = mockResources(4.0, 4096L, 1024L * 10);
+        when(functionConfig.getResources()).thenReturn(resources);
+
+        return functionConfig;
+    }
+
     private Resources mockResources(Double cpu, Long ram, Long disk) {
         Resources resources = mock(Resources.class);
         when(resources.getCpu()).thenReturn(cpu);
@@ -516,9 +536,20 @@ public class FunctionImplV2Test {
 
     private void verifyParameterForUpdate(V1alpha1Function v1alpha1FunctionOrigin,
                                           V1alpha1Function v1alpha1FunctionFinal) {
-        v1alpha1FunctionOrigin.getSpec().setImage(runnerImage);
-        v1alpha1FunctionOrigin.getSpec().getPod().setServiceAccountName(serviceAccountName);
         v1alpha1FunctionOrigin.getMetadata().setResourceVersion("899291");
+        Assert.assertEquals(new V1alpha1FunctionSpecPodResources().limits(new HashMap<>(){
+            {
+                put(CPU_KEY, 4);
+                // 4096 + padding
+                put(MEMORY_KEY, 4506L);
+            }
+        }).requests(new HashMap<>() {
+            {
+                put(CPU_KEY, 4);
+                put(MEMORY_KEY, 4096L);
+            }
+        }).toString(), v1alpha1FunctionFinal.getSpec().getResources().toString());
+        v1alpha1FunctionOrigin.getSpec().setResources(v1alpha1FunctionFinal.getSpec().getResources());
         //if authenticationEnabled=true,v1alpha1FunctionOrigin should set pod policy
 
         Assert.assertEquals(v1alpha1FunctionOrigin, v1alpha1FunctionFinal);
@@ -557,6 +588,7 @@ public class FunctionImplV2Test {
         when(functionSpec.getTimeout()).thenReturn(100);
         when(functionSpec.getLogTopic()).thenReturn(logTopic);
         when(functionSpec.getForwardSourceMessageProperty()).thenReturn(true);
+        when(functionSpec.getMaxPendingAsyncRequests()).thenReturn(null);
 
         when(functionSpec.getJava()).thenReturn(functionSpecJava);
         when(functionSpecJava.getJar()).thenReturn("test.jar");

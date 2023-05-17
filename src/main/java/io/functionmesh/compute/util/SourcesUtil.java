@@ -24,6 +24,7 @@ import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpd
 import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpdatePolicy.UpdateModeEnum.INITIAL;
 import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpdatePolicy.UpdateModeEnum.OFF;
 import static io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaUpdatePolicy.UpdateModeEnum.RECREATE;
+import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_CONNECTOR_TYPE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
@@ -112,11 +113,6 @@ public class SourcesUtil {
         String clusterName = CommonUtil.getClusterName(cluster, customRuntimeOptions);
         String serviceAccountName = customRuntimeOptions.getServiceAccountName();
 
-        String location = String.format("%s/%s/%s", sourceConfig.getTenant(), sourceConfig.getNamespace(),
-                sourceConfig.getName());
-        if (StringUtils.isNotEmpty(sourcePkgUrl)) {
-            location = sourcePkgUrl;
-        }
         String archive = sourceConfig.getArchive();
         SourceConfigUtils.ExtractedSourceDetails extractedSourceDetails =
                 new SourceConfigUtils.ExtractedSourceDetails("", customRuntimeOptions.getInputTypeClassName());
@@ -177,7 +173,16 @@ public class SourcesUtil {
             extraDependenciesDir = "/pulsar/instances/deps";
         }
         v1alpha1SourceSpecJava.setExtraDependenciesDir(extraDependenciesDir);
-        if (connectorsManager != null && archive.startsWith(BUILTIN)) {
+        /** archive only has three formats:
+         * 1. builtin://xxx
+         * 2. function/sink/source://xxx, the sourcePkgUrl will be set with same value as archive
+         * 3. raw file path, in this case, a package will be created based on the file and sourcePkgUrl will be set,
+         */
+        if (archive.startsWith(BUILTIN)) {
+            if (connectorsManager == null) {
+                log.warn("cannot find built-in connector, connectorsManager is null");
+                throw new RestException(Response.Status.BAD_REQUEST, String.format("connector manager is null"));
+            }
             String connectorType = archive.replaceFirst("^builtin://", "");
             FunctionMeshConnectorDefinition definition = connectorsManager.getConnectorDefinition(connectorType);
             if (definition != null) {
@@ -194,13 +199,19 @@ public class SourcesUtil {
                 throw new RestException(Response.Status.BAD_REQUEST,
                         String.format("connectorType %s is not supported yet", connectorType));
             }
-        } else {
-
+        } else if (Utils.hasPackageTypePrefix(archive)) {
             v1alpha1SourceSpecJava.setJar(
-                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), sourceConfig.getArchive()));
-            if (StringUtils.isNotEmpty(sourcePkgUrl)) {
-                v1alpha1SourceSpecJava.setJarLocation(location);
+                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive));
+            v1alpha1SourceSpecJava.setJarLocation(archive);
+            v1alpha1SourceSpec.setJava(v1alpha1SourceSpecJava);
+            extractedSourceDetails.setSourceClassName(sourceConfig.getClassName());
+        } else {
+            if (Strings.isEmpty(sourcePkgUrl)) {
+                throw new RestException(Response.Status.BAD_REQUEST, "neither connector type nor archive is specified");
             }
+            v1alpha1SourceSpecJava.setJar(
+                    buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive));
+            v1alpha1SourceSpecJava.setJarLocation(sourcePkgUrl);
             v1alpha1SourceSpec.setJava(v1alpha1SourceSpecJava);
             extractedSourceDetails.setSourceClassName(sourceConfig.getClassName());
         }
@@ -444,9 +455,9 @@ public class SourcesUtil {
                 }
                 if (componentPackageFile != null) {
                     try {
-                        ClassLoader clsLoader = FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SINK,
+                        ClassLoader clsLoader = FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SOURCE,
                                 null, componentPackageFile, worker.getWorkerConfig().getNarExtractionDirectory());
-                        inferredClassName = ConnectorUtils.getIOSinkClass((NarClassLoader) clsLoader);
+                        inferredClassName = ConnectorUtils.getIOSourceClass((NarClassLoader) clsLoader);
                         if (StringUtils.isNotEmpty(inferredClassName)) {
                             v1alpha1SourceSpec.setClassName(inferredClassName);
                             Class sourceClass = clsLoader.loadClass(inferredClassName);
@@ -473,6 +484,9 @@ public class SourcesUtil {
             currentAnnotations = new HashMap<>();
         }
         currentAnnotations.put(ANNOTATION_NEED_CLEANUP, "false");
+        if (archive.startsWith(BUILTIN)) {
+            currentAnnotations.put(ANNOTATION_CONNECTOR_TYPE, archive);
+        }
         v1alpha1Source.getMetadata().setAnnotations(currentAnnotations);
 
         return v1alpha1Source;
@@ -534,6 +548,9 @@ public class SourcesUtil {
                 sourceConfig.setProducerConfig(producerConfig);
             }
             customRuntimeOptions.setOutputTypeClassName(v1alpha1SourceSpec.getOutput().getTypeClassName());
+        }
+        if (Strings.isNotEmpty(v1alpha1SourceSpec.getImage())) {
+            customRuntimeOptions.setRunnerImage(v1alpha1SourceSpec.getImage());
         }
 
         if (Strings.isNotEmpty(v1alpha1SourceSpec.getClusterName())) {
@@ -608,8 +625,19 @@ public class SourcesUtil {
             sourceConfig.setRuntimeFlags(v1alpha1SourceSpec.getRuntimeFlags());
         }
 
-        if (v1alpha1SourceSpec.getJava() != null && Strings.isNotEmpty(v1alpha1SourceSpec.getJava().getJar())) {
-            sourceConfig.setArchive(v1alpha1SourceSpec.getJava().getJar());
+        if (v1alpha1SourceSpec.getJava() != null) {
+            try {
+                sourceConfig.setArchive(v1alpha1Source.getMetadata().getAnnotations().get(ANNOTATION_CONNECTOR_TYPE));
+                if (Strings.isEmpty(sourceConfig.getArchive())) {
+                    throw new IllegalArgumentException();
+                }
+            } catch (Exception e) {
+                if (Strings.isNotEmpty(v1alpha1SourceSpec.getJava().getJarLocation())) {
+                    sourceConfig.setArchive(v1alpha1SourceSpec.getJava().getJarLocation());
+                } else {
+                    sourceConfig.setArchive(v1alpha1SourceSpec.getJava().getJar());
+                }
+            }
         }
 
         return sourceConfig;

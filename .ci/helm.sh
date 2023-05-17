@@ -139,9 +139,8 @@ function ci::install_function_mesh_charts() {
 
   echo "wait until controller-manager is alive"
   ${KUBECTL} get deployment -n ${NAMESPACE}
-  sleep 120
-  ${KUBECTL} -n ${NAMESPACE} logs deployment/function-mesh-controller-manager
   ${KUBECTL} wait --for condition=available --timeout=360s deployment/function-mesh-controller-manager -n ${NAMESPACE}
+  ${KUBECTL} -n ${NAMESPACE} logs deployment/function-mesh-controller-manager
 
   cd ../../
 }
@@ -350,8 +349,6 @@ function ci::verify_mesh_worker_service_pulsar_admin() {
    return 1
   fi
   ${KUBECTL} get pods -n ${NAMESPACE}
-  sleep 120
-  ${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source"
   WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
@@ -367,12 +364,12 @@ function ci::verify_mesh_worker_service_pulsar_admin() {
     ${KUBECTL} get pods -n ${NAMESPACE}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
-  sleep 120
-  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks status --name data-generator-sink
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks status --name data-generator-sink)
-  if [[ $RET != *"true"* ]]; then
-   return 1
-  fi
+  while [[ $RET != *"true"* ]]; do
+    echo ${WC};
+    sleep 20
+    RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks status --name data-generator-sink)
+  done
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources status --name data-generator-source
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources status --name data-generator-source)
   if [[ $RET != *"true"* ]]; then
@@ -435,8 +432,6 @@ function ci::verify_mesh_worker_service_pulsar_admin_with_auth() {
    return 1
   fi
   ${KUBECTL} get pods -n ${NAMESPACE}
-  sleep 120
-  ${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source"
   WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
@@ -444,21 +439,19 @@ function ci::verify_mesh_worker_service_pulsar_admin_with_auth() {
     ${KUBECTL} get pods -n ${NAMESPACE}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   done
-  ${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source"
   WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
-  sleep 120
-  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks status --name data-generator-sink'
+
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks status --name data-generator-sink')
-  if [[ $RET != *"true"* ]]; then
-   return 1
-  fi
-  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources status --name data-generator-source'
+  while [[ $RET != *"true"* ]]; do
+    echo ${WC};
+    sleep 20
+    RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks status --name data-generator-sink')
+  done
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources status --name data-generator-source')
   if [[ $RET != *"true"* ]]; then
    return 1
@@ -483,12 +476,11 @@ function ci::verify_mesh_worker_service_pulsar_admin_with_auth() {
     ${KUBECTL} get pods -n ${NAMESPACE}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
-  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources status --name data-generator-source'
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources status --name data-generator-source')
   if [[ $RET != *"true"* ]]; then
     ${KUBECTL} logs -n ${NAMESPACE} data-generator-source-69865103-source-0
     ${KUBECTL} get pods data-generator-source-69865103-source-0 -o yaml
-   return 1
+    return 1
   fi
   ${KUBECTL} get pods -n ${NAMESPACE}
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources delete --name data-generator-source')
@@ -502,14 +494,14 @@ function ci::upload_java_package() {
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages upload function://public/default/java-function@1.0 --path /pulsar/examples/api-examples.jar --description java-function@1.0)
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 60
     return 1
   fi
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages download function://public/default/java-function@1.0 --path /pulsar/api-examples.jar)
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 60
     return 1
   fi
@@ -520,14 +512,14 @@ function ci::upload_java_package_with_auth() {
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages upload function://public/default/java-function@1.0 --path /pulsar/examples/api-examples.jar --description java-function@1.0')
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 60
     return 1
   fi
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages download function://public/default/java-function@1.0 --path /pulsar/api-examples.jar')
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 60
     return 1
   fi
@@ -535,10 +527,12 @@ function ci::upload_java_package_with_auth() {
 
 function ci::verify_java_package() {
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar function://public/default/java-function@1.0 --name package-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-java-fn-input --cpu 0.1)
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -551,6 +545,28 @@ function ci::verify_java_package() {
     ${KUBECTL} describe ${RET}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   done
+
+  # update function
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions update --name package-java-fn --cpu 0.2)
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  echo "${RET}"
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  sleep 15
+  ${KUBECTL} get pods -A
+  sleep 5
+  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+  while [[ ${WC} -lt 1 ]]; do
+    echo ${WC};
+    sleep 20
+    ${KUBECTL} get pods -n ${NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-java-fn)
+    ${KUBECTL} describe ${RET}
+    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+  done
+
   echo "java function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-java-fn)
   echo "${RET}"
@@ -558,10 +574,8 @@ function ci::verify_java_package() {
 
 function ci::verify_java_package_with_auth() {
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions create --jar function://public/default/java-function@1.0 --name package-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-java-fn-input --cpu 0.1')
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -580,7 +594,7 @@ function ci::verify_java_package_with_auth() {
 }
 
 function ci::upload_python_package() {
-  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages upload function://public/default/python-function@1.0 --path /pulsar/examples/python-examples/exclamation_function.py --description python-function@1.0)
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin packages upload function://public/default/python-function@1.0 --path /pulsar/examples/python-examples/exclamation_function.py --description python-function@1.0 -P fileName=exclamation_function.py)
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
     return 1
@@ -588,7 +602,7 @@ function ci::upload_python_package() {
 }
 
 function ci::upload_python_package_with_auth() {
-  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages upload function://public/default/python-function@1.0 --path /pulsar/examples/python-examples/exclamation_function.py --description python-function@1.0')
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters packages upload function://public/default/python-function@1.0 --path /pulsar/examples/python-examples/exclamation_function.py --description python-function@1.0 -P fileName=exclamation_function.py')
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
     return 1
@@ -604,6 +618,30 @@ function ci::verify_python_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
+  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+  while [[ ${WC} -lt 1 ]]; do
+    echo ${WC};
+    sleep 20
+    ${KUBECTL} get pods -n ${NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-fn)
+    ${KUBECTL} describe ${RET}
+    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+  done
+
+  # update function
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions update --name package-python-fn --py /pulsar/examples/python-examples/exclamation_function.py)
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  sleep 15
+  ${KUBECTL} get pods -A
+  sleep 5
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions get --name package-python-fn | grep \"py\":)
+  if [[ $RET != *"function://public/default/package-python-fn"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
   WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
@@ -679,6 +717,30 @@ function ci::verify_go_package() {
     ${KUBECTL} describe ${RET}
     WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   done
+
+  # update function
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions update --name package-go-fn  --output persistent://public/default/package-go-fn-output)
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  sleep 15
+  ${KUBECTL} get pods -A
+  sleep 5
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions get --name package-go-fn | grep \"output\":)
+  if [[ $RET != *"persistent://public/default/package-go-fn-output"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+  while [[ ${WC} -lt 1 ]]; do
+    echo ${WC};
+    sleep 20
+    ${KUBECTL} get pods -n ${NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-go-fn)
+    ${KUBECTL} describe ${RET}
+    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+  done
   echo "go function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-go-fn)
   echo "${RET}"
@@ -712,10 +774,8 @@ function ci::create_java_function_by_upload() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics create persistent://public/default/package-upload-java-fn-input1
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin topics create persistent://public/default/package-upload-java-fn-input2
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar /pulsar/examples/api-examples.jar --name package-upload-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --topics-pattern persistent://public/default/package-upload-java-fn-input.* --cpu 0.1)
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -767,10 +827,8 @@ function ci::create_java_function_by_upload() {
 function ci::create_java_function_by_upload_with_auth() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- cat conf/functions_worker.yml
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions create --jar /pulsar/examples/api-examples.jar --name package-upload-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-upload-java-fn-input --cpu 0.1')
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -879,10 +937,34 @@ function ci::create_source_by_upload() {
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- cat conf/functions_worker.yml
   PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-batch-data-generator)
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --classname  org.apache.pulsar.io.batchdatagenerator.BatchDataGeneratorSource --destination-topic-name persistent://public/default/package-upload-connector-topic --batch-source-config '{"discoveryTriggererClassName": "org.apache.pulsar.io.batchdiscovery.ImmediateTriggerer"}' --custom-runtime-options '{"outputTypeClassName": "org.apache.pulsar.io.batchdatagenerator.Person"}')
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  sleep 15
+  ${KUBECTL} get pods -A
+  sleep 5
+  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+  while [[ ${WC} -lt 1 ]]; do
+    echo ${WC};
+    sleep 20
+    ${KUBECTL} get pods -n ${NAMESPACE}
+    ${KUBECTL} describe pod package-upload-source-2c1626bf-source-0
+    ${KUBECTL} get pod package-upload-source-2c1626bf-source-0 -o yaml
+    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+  done
+  RESOURCENAME=$(${KUBECTL} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
+  echo "${RESOURCENAME}"
+  RET=$(${KUBECTL} get sources ${RESOURCENAME} -o json | jq .spec.className)
+  echo "${RET}"
+  [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
+
+  # update source
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources update --name package-upload-source --cpu 0.2 --batch-source-config '{"discoveryTriggererClassName": "org.apache.pulsar.io.batchdiscovery.ImmediateTriggerer"}')
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  echo "${RET}"
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -942,10 +1024,8 @@ function ci::create_source_by_upload_with_auth() {
   PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-batch-data-generator)
   command="${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin \$brokerClientAuthenticationPlugin --auth-params \$brokerClientAuthenticationParameters sources create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-source --classname org.apache.pulsar.io.batchdatagenerator.BatchDataGeneratorSource --destination-topic-name persistent://public/default/package-upload-connector-topic --batch-source-config \"{\\\"discoveryTriggererClassName\\\": \\\"org.apache.pulsar.io.batchdiscovery.ImmediateTriggerer\\\"}\" --custom-runtime-options \"{\\\"outputTypeClassName\\\": \\\"org.apache.pulsar.io.batchdatagenerator.Person\\\"}\"'"
   RET=$(sh -c "$command")
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -1003,10 +1083,33 @@ function ci::create_source_by_upload_with_auth() {
 function ci::create_sink_by_upload() {
   PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-sink --inputs persistent://public/default/package-upload-connector-topic --custom-runtime-options '{"inputTypeClassName": "org.apache.pulsar.io.datagenerator.Person"}')
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  sleep 15
+  ${KUBECTL} get pods -A
+  sleep 5
+  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+  while [[ ${WC} -lt 1 ]]; do
+    echo ${WC};
+    sleep 20
+    ${KUBECTL} get pods -n ${NAMESPACE}
+    ${KUBECTL} describe pod package-upload-sink-21a402bf-sink-0
+    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+  done
+  RESOURCENAME=$(${KUBECTL} get sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
+  echo "${RESOURCENAME}"
+  RET=$(${KUBECTL} get sinks ${RESOURCENAME} -o json | jq .spec.className)
+  echo "${RET}"
+  [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
+
+  # update sink
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks update --name package-upload-sink --cpu 0.2)
+  if [[ $RET != *"successfully"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
+  echo "${RET}"
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -1052,10 +1155,8 @@ function ci::create_sink_by_upload_with_auth() {
   PULSAR_IO_DATA_GENERATOR=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- ls connectors | grep pulsar-io-data-generator)
   command="${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin \$brokerClientAuthenticationPlugin --auth-params \$brokerClientAuthenticationParameters sinks create -a /pulsar/connectors/${PULSAR_IO_DATA_GENERATOR} --name package-upload-sink --inputs persistent://public/default/package-upload-connector-topic --custom-runtime-options \"{\\\"inputTypeClassName\\\": \\\"org.apache.pulsar.io.datagenerator.Person\\\"}\"'"
   RET=$(sh -c "$command")
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-  sleep 15
   echo "${RET}"
-  ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+  ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
@@ -1100,10 +1201,8 @@ function ci::create_sink_by_upload_with_auth() {
 function ci::verify_function_stats_api() {
   echo "create Java function"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar /pulsar/examples/api-examples.jar --name api-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/api-java-fn-input -o persistent://public/default/api-java-fn-output --cpu 0.1 --subs-position Earliest)
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-    sleep 15
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
@@ -1140,10 +1239,8 @@ function ci::verify_function_stats_api() {
 function ci::verify_function_stats_api_with_auth() {
   echo "create Java function"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions create --jar /pulsar/examples/api-examples.jar --name api-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/api-java-fn-input -o persistent://public/default/api-java-fn-output --cpu 0.1 --subs-position Earliest')
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
-    sleep 15
     echo "${RET}"
-    ${KUBECTL} logs -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
+    ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5

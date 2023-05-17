@@ -21,6 +21,7 @@ package io.functionmesh.compute.rest.api;
 import static io.functionmesh.compute.util.KubernetesUtils.buildTlsConfigMap;
 import static io.functionmesh.compute.util.KubernetesUtils.validateResourceOwner;
 import static io.functionmesh.compute.util.KubernetesUtils.validateStatefulSet;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import io.functionmesh.compute.MeshWorkerService;
@@ -76,6 +77,7 @@ import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.proto.InstanceCommunication;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc;
 import org.apache.pulsar.functions.utils.ComponentTypeUtils;
+import org.apache.pulsar.functions.utils.SinkConfigUtils;
 import org.apache.pulsar.functions.worker.service.api.Sinks;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 
@@ -230,6 +232,31 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                 throw new RestException(Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
             }
         }
+        String nameSpaceName = worker().getJobNamespace();
+        String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
+        V1alpha1Sink v1alpha1SinkPre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
+        if (v1alpha1SinkPre.getMetadata() == null || v1alpha1SinkPre.getMetadata().getLabels() == null) {
+            log.error("update {}/{}/{} sink failed, the sink resource cannot be found", tenant, namespace,
+                    sinkName);
+            throw new RestException(Response.Status.NOT_FOUND, "This sink resource was not found");
+        }
+        SinkConfig existingSinkConfig = SinksUtil.createSinkConfigFromV1alpha1Sink(tenant, namespace, sinkName,
+                v1alpha1SinkPre, worker());
+        SinkConfig mergedConfig;
+        try {
+            mergedConfig = SinkConfigUtils.validateUpdate(existingSinkConfig, sinkConfig);
+        } catch (Exception e) {
+            throw new RestException(Response.Status.BAD_REQUEST, e.getMessage());
+        }
+        if (existingSinkConfig.equals(mergedConfig) && isBlank(packageURL) && uploadedInputStream == null) {
+            log.error("{}/{}/{} Update contains no changes", tenant, namespace, sinkName);
+            throw new RestException(Response.Status.BAD_REQUEST, "Update contains no change");
+        }
+
+        if (StringUtils.isEmpty(mergedConfig.getArchive())) {
+            mergedConfig.setArchive(existingSinkConfig.getArchive());
+        }
+
         String cluster = worker().getWorkerConfig().getPulsarFunctionsCluster();
         try {
             V1alpha1Sink v1alpha1Sink =
@@ -240,19 +267,11 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                             sinkName,
                             packageURL,
                             uploadedInputStream,
-                            sinkConfig, this.meshWorkerServiceSupplier.get().getConnectorsManager(),
+                            mergedConfig, this.meshWorkerServiceSupplier.get().getConnectorsManager(),
                             cluster, worker());
 
-            String nameSpaceName = worker().getJobNamespace();
-            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
-            V1alpha1Sink v1alpha1Sink1Pre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
-            if (v1alpha1Sink1Pre.getMetadata() == null || v1alpha1Sink1Pre.getMetadata().getLabels() == null) {
-                log.error("update {}/{}/{} sink failed, the sink resource cannot be found", tenant, namespace,
-                        sinkName);
-                throw new RestException(Response.Status.NOT_FOUND, "This sink resource was not found");
-            }
             v1alpha1Sink.getMetadata().setNamespace(worker().getJobNamespace());
-            v1alpha1Sink.getMetadata().setResourceVersion(v1alpha1Sink1Pre.getMetadata().getResourceVersion());
+            v1alpha1Sink.getMetadata().setResourceVersion(v1alpha1SinkPre.getMetadata().getResourceVersion());
 
             this.upsertSink(tenant, namespace, sinkName, sinkConfig, v1alpha1Sink, clientRole,
                     clientAuthenticationDataHttps);

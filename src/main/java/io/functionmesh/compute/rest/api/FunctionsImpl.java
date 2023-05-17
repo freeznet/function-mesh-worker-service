@@ -21,6 +21,7 @@ package io.functionmesh.compute.rest.api;
 import static io.functionmesh.compute.util.KubernetesUtils.buildTlsConfigMap;
 import static io.functionmesh.compute.util.KubernetesUtils.validateResourceOwner;
 import static io.functionmesh.compute.util.KubernetesUtils.validateStatefulSet;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import io.functionmesh.compute.MeshWorkerService;
@@ -75,6 +76,7 @@ import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.proto.InstanceCommunication;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc;
 import org.apache.pulsar.functions.utils.ComponentTypeUtils;
+import org.apache.pulsar.functions.utils.FunctionConfigUtils;
 import org.apache.pulsar.functions.worker.service.api.Functions;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 
@@ -246,6 +248,38 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                 throw new RestException(Response.Status.INTERNAL_SERVER_ERROR, e.getMessage());
             }
         }
+
+        String nameSpaceName = worker().getJobNamespace();
+        String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
+        V1alpha1Function v1alpha1FunctionPre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
+        if (v1alpha1FunctionPre.getMetadata() == null || v1alpha1FunctionPre.getMetadata().getLabels() == null) {
+            log.error("update {}/{}/{} function failed, the function resource cannot be found", tenant, namespace,
+                    functionName);
+            throw new RestException(Response.Status.NOT_FOUND, "This function resource was not found");
+        }
+        FunctionConfig existingFunctionConfig = FunctionsUtil.createFunctionConfigFromV1alpha1Function(tenant,
+                namespace, functionName, v1alpha1FunctionPre, worker());
+        FunctionConfig mergedConfig;
+        try {
+            mergedConfig = FunctionConfigUtils.validateUpdate(existingFunctionConfig, functionConfig);
+        } catch (Exception e) {
+            throw new RestException(Response.Status.BAD_REQUEST, e.getMessage());
+        }
+        if (StringUtils.isEmpty(packageURL)) {
+            if (StringUtils.isNotEmpty(existingFunctionConfig.getJar())) {
+                packageURL = existingFunctionConfig.getJar();
+            } else if (StringUtils.isNotEmpty(existingFunctionConfig.getPy())) {
+                packageURL = existingFunctionConfig.getPy();
+            } else if (StringUtils.isNotEmpty(existingFunctionConfig.getGo())) {
+                packageURL = existingFunctionConfig.getGo();
+            }
+        }
+
+        if (existingFunctionConfig.equals(mergedConfig) && isBlank(packageURL) && uploadedInputStream == null) {
+            log.error("{}/{}/{} Update contains no changes", tenant, namespace, functionName);
+            throw new RestException(Response.Status.BAD_REQUEST, "Update contains no change");
+        }
+
         try {
             String cluster = worker().getWorkerConfig().getPulsarFunctionsCluster();
             V1alpha1Function v1alpha1Function = FunctionsUtil.createV1alpha1FunctionFromFunctionConfig(
@@ -254,19 +288,11 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                     apiVersion,
                     functionName,
                     packageURL,
-                    functionConfig,
+                    mergedConfig,
                     cluster,
                     worker()
             );
 
-            String nameSpaceName = worker().getJobNamespace();
-            String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
-            V1alpha1Function v1alpha1FunctionPre = extractResponse(getResourceApi().get(nameSpaceName, hashName));
-            if (v1alpha1FunctionPre.getMetadata() == null || v1alpha1FunctionPre.getMetadata().getLabels() == null) {
-                log.error("update {}/{}/{} function failed, the function resource cannot be found", tenant, namespace,
-                        functionName);
-                throw new RestException(Response.Status.NOT_FOUND, "This function resource was not found");
-            }
 
             v1alpha1Function.getMetadata().setNamespace(worker().getJobNamespace());
             v1alpha1Function.getMetadata().setResourceVersion(v1alpha1FunctionPre.getMetadata().getResourceVersion());

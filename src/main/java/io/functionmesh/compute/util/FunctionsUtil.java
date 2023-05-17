@@ -606,6 +606,10 @@ public class FunctionsUtil {
             customRuntimeOptions.setInputTypeClassName(v1alpha1FunctionSpecInput.getTypeClassName());
         }
 
+        if (Strings.isNotEmpty(v1alpha1FunctionSpec.getImage())) {
+            customRuntimeOptions.setRunnerImage(v1alpha1FunctionSpec.getImage());
+        }
+
         if (Strings.isNotEmpty(v1alpha1FunctionSpec.getClusterName())) {
             customRuntimeOptions.setClusterName(v1alpha1FunctionSpec.getClusterName());
         }
@@ -684,8 +688,12 @@ public class FunctionsUtil {
                 consumerConfig.setSchemaType(sourceSpecs.getSchemaType());
                 consumerConfig.setSerdeClassName(sourceSpecs.getSerdeClassname());
                 consumerConfig.setReceiverQueueSize(sourceSpecs.getReceiverQueueSize());
-                consumerConfig.setSchemaProperties(sourceSpecs.getSchemaProperties());
-                consumerConfig.setConsumerProperties(sourceSpecs.getConsumerProperties());
+                if (sourceSpecs.getSchemaProperties() != null) {
+                    consumerConfig.setSchemaProperties(sourceSpecs.getSchemaProperties());
+                }
+                if (sourceSpecs.getConsumerProperties() != null) {
+                    consumerConfig.setConsumerProperties(sourceSpecs.getConsumerProperties());
+                }
                 if (sourceSpecs.getCryptoConfig() != null) {
                     // TODO: convert CryptoConfig to function config
                 }
@@ -774,13 +782,13 @@ public class FunctionsUtil {
             functionConfig.setRuntime(FunctionConfig.Runtime.PYTHON);
             functionConfig.setPy(v1alpha1FunctionSpec.getPython().getPy());
             if (Strings.isNotEmpty(v1alpha1FunctionSpec.getPython().getPyLocation())) {
-                functionConfig.setJar(v1alpha1FunctionSpec.getPython().getPyLocation());
+                functionConfig.setPy(v1alpha1FunctionSpec.getPython().getPyLocation());
             }
         } else if (v1alpha1FunctionSpec.getGolang() != null) {
             functionConfig.setRuntime(FunctionConfig.Runtime.GO);
             functionConfig.setGo(v1alpha1FunctionSpec.getGolang().getGo());
             if (Strings.isNotEmpty(v1alpha1FunctionSpec.getGolang().getGoLocation())) {
-                functionConfig.setJar(v1alpha1FunctionSpec.getGolang().getGoLocation());
+                functionConfig.setGo(v1alpha1FunctionSpec.getGolang().getGoLocation());
             }
         }
         if (v1alpha1FunctionSpec.getMaxMessageRetry() != null) {
@@ -789,6 +797,9 @@ public class FunctionsUtil {
                 functionConfig.setDeadLetterTopic(v1alpha1FunctionSpec.getDeadLetterTopic());
             }
         }
+
+        functionConfig.setMaxPendingAsyncRequests(v1alpha1FunctionSpec.getMaxPendingAsyncRequests());
+
         if (v1alpha1FunctionSpec.getWindowConfig() != null) {
             WindowConfig windowConfig = new WindowConfig();
             windowConfig.setWindowLengthCount(v1alpha1FunctionSpec.getWindowConfig().getWindowLengthCount());
@@ -801,6 +812,7 @@ public class FunctionsUtil {
             windowConfig.setTimestampExtractorClassName(v1alpha1FunctionSpec.getWindowConfig().getTimestampExtractorClassName());
             functionConfig.setWindowConfig(windowConfig);
         }
+
         functionConfig.setClassName(v1alpha1FunctionSpec.getClassName());
         if (v1alpha1FunctionSpec.getFuncConfig() != null) {
             functionConfig.setUserConfig((Map<String, Object>) v1alpha1FunctionSpec.getFuncConfig());
