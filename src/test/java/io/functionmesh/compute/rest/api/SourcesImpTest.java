@@ -321,7 +321,6 @@ public class SourcesImpTest {
                     null,
                     null,
                     sourceConfig,
-                    null,
                     null);
         } catch (Exception exception) {
             Assert.fail("No exception, but got exception: " + exception);
@@ -572,7 +571,6 @@ public class SourcesImpTest {
                     null,
                     sourceConfig,
                     null,
-                    null,
                     null);
         } catch (Exception exception) {
             Assert.fail("Expected no exception to be thrown but got exception: " + exception);
@@ -758,7 +756,7 @@ public class SourcesImpTest {
 
         SourcesImpl sources = spy(new SourcesImpl(meshWorkerServiceSupplier));
         SourceStatus sourceStatus =
-                sources.getSourceStatus(tenant, namespace, componentName, null, null, null);
+                sources.getSourceStatus(tenant, namespace, componentName, null, null);
 
         SourceStatus expectedSourceStatus = new SourceStatus();
         SourceStatus.SourceInstanceStatus expectedSourceInstanceStatus =

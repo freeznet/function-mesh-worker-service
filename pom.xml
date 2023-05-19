@@ -23,9 +23,9 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.functionmesh.proxy</groupId>
     <artifactId>mesh-worker-service</artifactId>
-    <version>3.0.0.1-SNAPSHOT</version>
+    <version>3.0.0.1-rc1</version>
     <properties>
-        <pulsar.version>3.0.0.1-SNAPSHOT</pulsar.version>
+        <pulsar.version>3.0.0.1-rc1</pulsar.version>
         <lombok.version>1.18.24</lombok.version>
         <log4j2.version>2.17.1</log4j2.version>
         <kubernetes-client.version>12.0.2</kubernetes-client.version>
@@ -53,6 +53,7 @@
             --add-opens java.base/sun.nio.fs=ALL-UNNAMED
             --add-opens java.base/sun.net=ALL-UNNAMED <!--netty.DnsResolverUtil-->
             --add-opens java.management/sun.management=ALL-UNNAMED <!--JvmDefaultGCMetricsLogger & MBeanStatsGenerator-->
+            --add-opens java.xml/jdk.xml.internal=ALL-UNNAMED
             --add-opens jdk.management/com.sun.management.internal=ALL-UNNAMED <!--MBeanStatsGenerator-->
         </test.additional.args>
     </properties>

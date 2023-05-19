@@ -250,7 +250,7 @@ public class FunctionsImplTest {
 
         FunctionsImpl functions = spy(new FunctionsImpl(meshWorkerServiceSupplier));
         FunctionStatus functionStatus = functions.getFunctionStatus(
-                tenant, namespace, name, null, null, null);
+                tenant, namespace, name, null, null);
 
         FunctionStatus expectedFunctionStatus = new FunctionStatus();
         FunctionStatus.FunctionInstanceStatus expectedFunctionInstanceStatus =
@@ -408,7 +408,6 @@ public class FunctionsImplTest {
                     null,
                     functionConfig.getJar(),
                     functionConfig,
-                    null,
                     null);
         } catch (Exception exception) {
             Assert.fail("Expected no exception to be thrown but got exception: " + exception);
@@ -610,7 +609,6 @@ public class FunctionsImplTest {
                     functionConfig.getJar(),
                     functionConfig,
                     null,
-                    null,
                     null);
         } catch (Exception exception) {
             log.info("got exception", exception);
@@ -776,7 +774,7 @@ public class FunctionsImplTest {
 
         FunctionsImpl functions = spy(new FunctionsImpl(meshWorkerServiceSupplier));
         try {
-            functions.deregisterFunction(tenant, namespace, functionName, null, null);
+            functions.deregisterFunction(tenant, namespace, functionName, null);
         } catch (Exception exception) {
             Assert.fail("Expected no exception to be thrown but got exception: " + exception);
         }
@@ -870,7 +868,7 @@ public class FunctionsImplTest {
         PowerMockito.when(meshWorkerService.getApiClient()).thenReturn(apiClient);
         FunctionsImpl functions = spy(new FunctionsImpl(meshWorkerServiceSupplier));
         FunctionConfig functionConfig = functions.getFunctionInfo(
-                tenant, namespace, functionName, null, null);
+                tenant, namespace, functionName, null);
 
         V1alpha1Function v1alpha1Function = json.getGson().fromJson(testBody, V1alpha1Function.class);
         FunctionConfig expectedFunctionConfig = FunctionsUtil.createFunctionConfigFromV1alpha1Function(tenant,

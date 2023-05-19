@@ -30,6 +30,10 @@ public class HPASpec {
     private String builtinMemoryRule;
     private List<V2beta2MetricSpec> autoScalingMetrics;
     private V2beta2HorizontalPodAutoscalerBehavior autoScalingBehavior;
-    public static final List<String> builtinCPUAutoscalerRules = Arrays.asList("AverageUtilizationCPUPercent80", "AverageUtilizationCPUPercent50", "AverageUtilizationCPUPercent20");
-    public static final List<String> builtinMemoryAutoscalerRules = Arrays.asList("AverageUtilizationMemoryPercent80", "AverageUtilizationMemoryPercent50", "AverageUtilizationMemoryPercent20");
+    public static final List<String> builtinCPUAutoscalerRules =
+            Arrays.asList("AverageUtilizationCPUPercent80", "AverageUtilizationCPUPercent50",
+                    "AverageUtilizationCPUPercent20");
+    public static final List<String> builtinMemoryAutoscalerRules =
+            Arrays.asList("AverageUtilizationMemoryPercent80", "AverageUtilizationMemoryPercent50",
+                    "AverageUtilizationMemoryPercent20");
 }

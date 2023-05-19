@@ -28,8 +28,8 @@ import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_CONNECTOR_TYPE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
-import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.downloadPackageFile;
+import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.getCustomLabelClaims;
 import static org.apache.pulsar.common.functions.Utils.BUILTIN;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -145,7 +145,8 @@ public class SourcesUtil {
         v1alpha1SourceSpec.setNamespace(sourceConfig.getNamespace());
 
         if (sourceConfig.getProcessingGuarantees() != null) {
-            v1alpha1SourceSpec.setProcessingGuarantee(CommonUtil.convertSourceProcessingGuarantee(sourceConfig.getProcessingGuarantees()));
+            v1alpha1SourceSpec.setProcessingGuarantee(
+                    CommonUtil.convertSourceProcessingGuarantee(sourceConfig.getProcessingGuarantees()));
         }
 
         if (StringUtils.isNotEmpty(customConfig.getImagePullPolicy())) {
@@ -366,12 +367,13 @@ public class SourcesUtil {
                 env.add(podEnv);
             });
         }
-        
-        if (customRuntimeOptions.getVpaSpec() != null ) {
-            V1alpha1SourceSpecPodVpa vpaSpec = generateVPASpecFromCustomRuntimeOptions(customRuntimeOptions.getVpaSpec());
+
+        if (customRuntimeOptions.getVpaSpec() != null) {
+            V1alpha1SourceSpecPodVpa vpaSpec =
+                    generateVPASpecFromCustomRuntimeOptions(customRuntimeOptions.getVpaSpec());
             specPod.setVpa(vpaSpec);
         }
-        
+
         specPod.setEnv(env);
 
         // Handle HPA Configurations
@@ -449,14 +451,16 @@ public class SourcesUtil {
                         throw new IllegalArgumentException(
                                 "Function Package url is not valid. supported url (function/sink/source)");
                     }
-                } catch (Exception e){
+                } catch (Exception e) {
                     log.error("Invalid register source request {}", sourceName, e);
                     throw new RestException(Response.Status.BAD_REQUEST, e.getMessage());
                 }
                 if (componentPackageFile != null) {
                     try {
-                        ClassLoader clsLoader = FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SOURCE,
-                                null, componentPackageFile, worker.getWorkerConfig().getNarExtractionDirectory());
+                        ClassLoader clsLoader =
+                                FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SOURCE,
+                                        null, componentPackageFile,
+                                        worker.getWorkerConfig().getNarExtractionDirectory());
                         inferredClassName = ConnectorUtils.getIOSourceClass((NarClassLoader) clsLoader);
                         if (StringUtils.isNotEmpty(inferredClassName)) {
                             v1alpha1SourceSpec.setClassName(inferredClassName);

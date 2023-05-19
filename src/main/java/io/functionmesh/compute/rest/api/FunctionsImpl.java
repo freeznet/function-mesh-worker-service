@@ -65,7 +65,7 @@ import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import io.kubernetes.client.util.PatchUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.common.functions.FunctionConfig;
 import org.apache.pulsar.common.functions.FunctionDefinition;
 import org.apache.pulsar.common.functions.UpdateOptionsImpl;
@@ -158,18 +158,16 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                  final FormDataContentDisposition fileDetail,
                                  final String functionPkgUrl,
                                  final FunctionConfig functionConfig,
-                                 final String clientRole,
-                                 AuthenticationDataSource clientAuthenticationDataHttps) {
+                                 final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
 
         validateRegisterFunctionRequestParams(tenant, namespace, functionName, functionConfig,
                 uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, functionName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, functionName, authenticationParameters);
         String packageURL = functionPkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -198,7 +196,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
         v1alpha1Function.getMetadata().setNamespace(worker().getJobNamespace());
         try {
             this.upsertFunction(tenant, namespace, functionName, functionConfig, v1alpha1Function,
-                    clientRole, clientAuthenticationDataHttps);
+                    authenticationParameters);
 
             extractResponse(getResourceApi().create(v1alpha1Function));
         } catch (RestException restException) {
@@ -223,8 +221,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                final FormDataContentDisposition fileDetail,
                                final String functionPkgUrl,
                                final FunctionConfig functionConfig,
-                               final String clientRole,
-                               AuthenticationDataSource clientAuthenticationDataHttps,
+                               final AuthenticationParameters authenticationParameters,
                                UpdateOptionsImpl updateOptions) {
         validateFunctionEnabled();
 
@@ -232,10 +229,9 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                 uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, functionName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, functionName, authenticationParameters);
         String packageURL = functionPkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -298,7 +294,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
             v1alpha1Function.getMetadata().setResourceVersion(v1alpha1FunctionPre.getMetadata().getResourceVersion());
 
             this.upsertFunction(tenant, namespace, functionName, functionConfig, v1alpha1Function,
-                    clientRole, clientAuthenticationDataHttps);
+                    authenticationParameters);
             extractResponse(getResourceApi().update(v1alpha1Function));
         } catch (Exception e) {
             log.error("update {}/{}/{} function failed", tenant, namespace, functionName, e);
@@ -311,15 +307,13 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
     public FunctionConfig getFunctionInfo(final String tenant,
                                           final String namespace,
                                           final String componentName,
-                                          final String clientRole,
-                                          final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                          final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
         validateGetFunctionInfoRequestParams(tenant, namespace, componentName);
 
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
 
         try {
@@ -416,21 +410,19 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
             final String componentName,
             final String instanceId,
             final URI uri,
-            final String clientRole,
-            final AuthenticationDataSource clientAuthenticationDataHttps) {
+            final AuthenticationParameters authenticationParameters) {
 
         throw new RestException(Response.Status.BAD_REQUEST, "Unsupported Operation");
     }
 
     @Override
-    public void reloadBuiltinFunctions(String clientRole, AuthenticationDataSource clientAuthenticationDataHttps)
+    public void reloadBuiltinFunctions(AuthenticationParameters authenticationParameters)
             throws IOException {
 
     }
 
     @Override
-    public List<FunctionDefinition> getBuiltinFunctions(String clientRole,
-                                                        AuthenticationDataSource clientAuthenticationDataHttps) {
+    public List<FunctionDefinition> getBuiltinFunctions(AuthenticationParameters authenticationParameters) {
         return null;
     }
 
@@ -439,14 +431,12 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                             final String namespace,
                                             final String componentName,
                                             final URI uri,
-                                            final String clientRole,
-                                            final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                            final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
         FunctionStatus functionStatus = new FunctionStatus();
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, componentName);
@@ -556,8 +546,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                              final InputStream uploadedInputStream,
                                              final boolean delete,
                                              URI uri,
-                                             final String clientRole,
-                                             final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                             final AuthenticationParameters authenticationParameters) {
         throw new RestException(Response.Status.BAD_REQUEST, "Unsupported Operation");
     }
 
@@ -566,8 +555,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                 final String functionName,
                                 final FunctionConfig functionConfig,
                                 V1alpha1Function v1alpha1Function,
-                                String clientRole,
-                                AuthenticationDataSource clientAuthenticationDataHttps) {
+                                final AuthenticationParameters authenticationParameters) {
         try {
             V1alpha1FunctionSpecPod podPolicy = v1alpha1Function.getSpec().getPod();
             if (podPolicy == null) {
@@ -588,9 +576,9 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
 
             // set auth related
             if (worker().getWorkerConfig().isAuthenticationEnabled()) {
-                if (clientAuthenticationDataHttps != null) {
+                if (authenticationParameters != null) {
                     AuthResults results =
-                            CommonUtil.doAuth(worker(), clientRole, clientAuthenticationDataHttps, apiKind);
+                            CommonUtil.doAuth(worker(), authenticationParameters, apiKind);
                     // create an auth secret when the secret data is not null
                     if (results.getAuthSecretData() != null && !results.getAuthSecretData().isEmpty()) {
                         String authSecretName = KubernetesUtils.upsertSecret(apiKind.toLowerCase(), "auth",
@@ -871,18 +859,16 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
     @Override
     public List<String> listFunctions(final String tenant,
                                       final String namespace,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
-        return super.listFunctions(tenant, namespace, clientRole, clientAuthenticationDataHttps);
+        return super.listFunctions(tenant, namespace, authenticationParameters);
     }
 
     @Override
     public void stopFunctionInstances(final String tenant,
                                       final String namespace,
                                       final String functionName,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
@@ -918,8 +904,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
     public void startFunctionInstances(final String tenant,
                                        final String namespace,
                                        final String functionName,
-                                       final String clientRole,
-                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                       final AuthenticationParameters authenticationParameters) {
         validateFunctionEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
@@ -965,8 +950,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
     public void restartFunctionInstances(final String tenant,
                                          final String namespace,
                                          final String functionName,
-                                         final String clientRole,
-                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                         final AuthenticationParameters authenticationParameters) {
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
 

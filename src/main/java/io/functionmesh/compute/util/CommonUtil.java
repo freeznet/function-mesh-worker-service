@@ -60,7 +60,7 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.common.functions.FunctionConfig;
@@ -204,7 +204,8 @@ public class CommonUtil {
         return null;
     }
 
-    public static V1alpha1FunctionSpec.ProcessingGuaranteeEnum convertFunctionProcessingGuarantee(FunctionConfig.ProcessingGuarantees processingGuarantees) {
+    public static V1alpha1FunctionSpec.ProcessingGuaranteeEnum convertFunctionProcessingGuarantee(
+            FunctionConfig.ProcessingGuarantees processingGuarantees) {
         switch (processingGuarantees) {
             case ATLEAST_ONCE:
                 return V1alpha1FunctionSpec.ProcessingGuaranteeEnum.ATLEAST_ONCE;
@@ -216,7 +217,8 @@ public class CommonUtil {
         return null;
     }
 
-    public static V1alpha1SinkSpec.ProcessingGuaranteeEnum convertSinkProcessingGuarantee(FunctionConfig.ProcessingGuarantees processingGuarantees) {
+    public static V1alpha1SinkSpec.ProcessingGuaranteeEnum convertSinkProcessingGuarantee(
+            FunctionConfig.ProcessingGuarantees processingGuarantees) {
         switch (processingGuarantees) {
             case ATLEAST_ONCE:
                 return V1alpha1SinkSpec.ProcessingGuaranteeEnum.ATLEAST_ONCE;
@@ -228,7 +230,8 @@ public class CommonUtil {
         return null;
     }
 
-    public static V1alpha1SourceSpec.ProcessingGuaranteeEnum convertSourceProcessingGuarantee(FunctionConfig.ProcessingGuarantees processingGuarantees) {
+    public static V1alpha1SourceSpec.ProcessingGuaranteeEnum convertSourceProcessingGuarantee(
+            FunctionConfig.ProcessingGuarantees processingGuarantees) {
         switch (processingGuarantees) {
             case ATLEAST_ONCE:
                 return V1alpha1SourceSpec.ProcessingGuaranteeEnum.ATLEAST_ONCE;
@@ -285,7 +288,7 @@ public class CommonUtil {
     public static int getShardIdFromPodName(String podName) {
         int shardId = -1;
         try {
-            shardId = new Integer(podName.substring(podName.lastIndexOf("-") + 1));
+            shardId = Integer.valueOf(podName.substring(podName.lastIndexOf("-") + 1));
         } catch (Exception ex) {
             log.error("getShardIdFromPodName failed with podName {}", podName, ex);
         }
@@ -506,6 +509,7 @@ public class CommonUtil {
 
         return new Resources(cpu, ram, disk);
     }
+
     public static File downloadPackageFile(MeshWorkerService worker, String packageName)
             throws IOException, PulsarAdminException {
         Path tempDirectory;
@@ -565,12 +569,13 @@ public class CommonUtil {
         return null;
     }
 
-    public static AuthResults doAuth(MeshWorkerService workerService, String clientRole,
-                                     AuthenticationDataSource clientAuthenticationDataHttps, String component) {
+    public static AuthResults doAuth(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
+                                     String component) {
         String pluginName = workerService.getWorkerConfig().getBrokerClientAuthenticationPlugin();
         if (workerService.getMeshWorkerServiceCustomConfig() != null) {
-            if (workerService.getMeshWorkerServiceCustomConfig().isUsingInsecureAuth())
+            if (workerService.getMeshWorkerServiceCustomConfig().isUsingInsecureAuth()) {
                 pluginName = INSECURE_PLUGIN_NAME;
+            }
         }
         AuthHandler handler = AUTH_HANDLERS.get(pluginName);
         if (handler == null) {
@@ -578,16 +583,18 @@ public class CommonUtil {
                     String.format("No handler for given auth plugin: %s",
                             workerService.getWorkerConfig().getBrokerClientAuthenticationPlugin()));
         }
-        return handler.handle(workerService, clientRole, clientAuthenticationDataHttps, component);
+        return handler.handle(workerService, authenticationParameters, component);
     }
 
     public static List<String> fetchBuiltinAutoscaler(HPASpec hpaSpec) {
         if (hpaSpec.getBuiltinCPURule() != null || hpaSpec.getBuiltinMemoryRule() != null) {
             List<String> builtinAutoscaler = new ArrayList<>();
-            if (hpaSpec.getBuiltinCPURule() != null && HPASpec.builtinCPUAutoscalerRules.contains(hpaSpec.getBuiltinCPURule())) {
+            if (hpaSpec.getBuiltinCPURule() != null && HPASpec.builtinCPUAutoscalerRules.contains(
+                    hpaSpec.getBuiltinCPURule())) {
                 builtinAutoscaler.add(hpaSpec.getBuiltinCPURule());
             }
-            if (hpaSpec.getBuiltinMemoryRule() != null && HPASpec.builtinMemoryAutoscalerRules.contains(hpaSpec.getBuiltinMemoryRule())) {
+            if (hpaSpec.getBuiltinMemoryRule() != null && HPASpec.builtinMemoryAutoscalerRules.contains(
+                    hpaSpec.getBuiltinMemoryRule())) {
                 builtinAutoscaler.add(hpaSpec.getBuiltinMemoryRule());
             }
             return builtinAutoscaler;

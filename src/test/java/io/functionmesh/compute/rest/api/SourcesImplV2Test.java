@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.distributedlog.api.namespace.Namespace;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.Namespaces;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.Tenants;
@@ -136,6 +137,7 @@ public class SourcesImplV2Test {
     private V1StatefulSetStatus sourceStatefulSetStatus;
     private V1ObjectMeta sourceStatefulSetMetadata;
     private V1PodList sourcePodList;
+    private final AuthenticationParameters parameters = AuthenticationParameters.builder().clientRole("admin").build();
 
     @Before
     public void setup() throws Exception {
@@ -240,7 +242,7 @@ public class SourcesImplV2Test {
         V1alpha1Source mockV1alpha1Source = mock(V1alpha1Source.class);
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Source);
         try {
-            this.resource.registerSource(tenant, namespace, sourceName, null, null, "function://public/default/test-source", sourceConfig, null, null);
+            this.resource.registerSource(tenant, namespace, sourceName, null, null, "function://public/default/test-source", sourceConfig, parameters);
         } catch (RestException restException) {
             Assert.fail(
                     String.format("register {}/{}/{} source failed, error message: {}", tenant, namespace, sourceName,
@@ -276,7 +278,7 @@ public class SourcesImplV2Test {
         when(mockV1alpha1Source.getSpec()).thenReturn(v1alpha1SourceOrigin.getSpec());
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Source);
         try {
-            this.resource.updateSource(tenant, namespace, sourceName, null, null, null, updateConfig, null, null, null);
+            this.resource.updateSource(tenant, namespace, sourceName, null, null, null, updateConfig, parameters, null);
         } catch (RestException restException) {
             Assert.fail(String.format("update {}/{}/{} source failed, error message: {}", tenant, namespace, sourceName,
                     restException.getMessage()));
@@ -303,7 +305,7 @@ public class SourcesImplV2Test {
         doReturn(Collections.singleton(CompletableFuture.completedFuture(
                 InstanceCommunication.MetricsData.newBuilder().build()))).when(resource)
                 .fetchSourceStatusFromGRPC(any(), any(), any(), any(), any(), any(), any(), any());
-        SourceStatus sourceStatus = this.resource.getSourceStatus(tenant, namespace, sourceName, null, null, null);
+        SourceStatus sourceStatus = this.resource.getSourceStatus(tenant, namespace, sourceName, null, parameters);
         Assert.assertNotNull(sourceStatus);
         Assert.assertEquals(1, sourceStatus.instances.size());
     }

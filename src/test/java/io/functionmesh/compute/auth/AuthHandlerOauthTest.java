@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package io.functionmesh.compute.auth;
 
 import static io.functionmesh.compute.auth.AuthHandlerOauth.KEY_NAME;
@@ -33,6 +32,7 @@ import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Secret;
 import io.kubernetes.client.openapi.models.V1SecretList;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.junit.Test;
 
@@ -46,6 +46,7 @@ public class AuthHandlerOauthTest {
         WorkerConfig workerConfig = mock(WorkerConfig.class);
         String oauth2Parameters = "{\"audience\":\"test-audience\",\"issuerUrl\":\"https://test.com/\""
                 + ",\"privateKey\":\"file:///mnt/secrets/auth.json\",\"type\":\"client_credentials\"}";
+        AuthenticationParameters parameters = AuthenticationParameters.builder().clientRole("admin").build();
         when(workerConfig.getBrokerClientAuthenticationPlugin()).thenReturn(CommonUtil.OAUTH_PLUGIN_NAME);
         when(workerConfig.getBrokerClientAuthenticationParameters()).thenReturn(oauth2Parameters);
 
@@ -60,13 +61,14 @@ public class AuthHandlerOauthTest {
         V1SecretList secrets = new V1SecretList().items(java.util.Collections.singletonList(v1Secret));
 
         when(meshWorkerService.getCoreV1Api()).thenReturn(coreV1Api);
-        when(coreV1Api.listNamespacedSecret("default", null, null, null, null, null, null, null, null, null, null)).thenReturn(secrets);
+        when(coreV1Api.listNamespacedSecret("default", null, null, null, null, null, null, null, null, null,
+                null)).thenReturn(secrets);
         when(meshWorkerService.getCoreV1Api()).thenReturn(coreV1Api);
 
         when(meshWorkerService.getWorkerConfig()).thenReturn(workerConfig);
         when(meshWorkerService.getJobNamespace()).thenReturn("default");
 
-        AuthResults results = new AuthHandlerOauth().handle(meshWorkerService, "admin", null, "Function");
+        AuthResults results = new AuthHandlerOauth().handle(meshWorkerService, parameters, "Function");
 
         AuthResults expected = new AuthResults();
         V1alpha1FunctionSpecPulsarAuthConfigOauth2Config oauth2 =

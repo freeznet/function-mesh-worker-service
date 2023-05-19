@@ -87,7 +87,7 @@ import org.apache.bookkeeper.clients.exceptions.NamespaceNotFoundException;
 import org.apache.bookkeeper.clients.exceptions.StreamNotFoundException;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.common.functions.FunctionConfig;
 import org.apache.pulsar.common.functions.FunctionState;
@@ -140,8 +140,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public FunctionConfig getFunctionInfo(final String tenant,
                                           final String namespace,
                                           final String componentName,
-                                          final String clientRole,
-                                          final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                          final AuthenticationParameters authenticationParameters) {
 
         FunctionConfig functionConfig = new FunctionConfig();
         return functionConfig;
@@ -151,14 +150,12 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public void deregisterFunction(final String tenant,
                                    final String namespace,
                                    final String componentName,
-                                   final String clientRole,
-                                   AuthenticationDataSource clientAuthenticationDataHttps) {
+                                   final AuthenticationParameters authenticationParameters) {
         this.validateGetInfoRequestParams(tenant, namespace, componentName, apiKind);
 
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
         try {
             String clusterName = worker().getWorkerConfig().getPulsarFunctionsCluster();
@@ -192,8 +189,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                 AuthHandler handler = CommonUtil.AUTH_HANDLERS.get(authPluginName);
                 if (handler != null) {
                     try {
-                        handler.cleanUp(worker(), clientRole, clientAuthenticationDataHttps, apiKind, clusterName,
-                                tenant,
+                        handler.cleanUp(worker(), authenticationParameters, apiKind, clusterName, tenant,
                                 namespace, componentName);
                     } catch (RuntimeException e) {
                         log.error("clean up auth for {}/{}/{} failed", tenant, namespace, componentName, e);
@@ -279,10 +275,9 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                      final String componentName,
                                      final String instanceId,
                                      final URI uri,
-                                     final String clientRole,
-                                     final AuthenticationDataSource clientAuthenticationDataHttps) {
-        throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
-                "stop the specified function instance is not supported via mesh worker service");
+                                     final AuthenticationParameters authenticationParameters) {
+            throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
+                    "stop the specified function instance is not supported via mesh worker service");
     }
 
     @Override
@@ -291,10 +286,9 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                       final String componentName,
                                       final String instanceId,
                                       final URI uri,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
-        throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
-                "start the specified function instance is not supported via mesh worker service");
+                                      final AuthenticationParameters authenticationParameters) {
+            throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
+                    "start the specified function instance is not supported via mesh worker service");
     }
 
     @Override
@@ -303,8 +297,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                         final String componentName,
                                         final String instanceId,
                                         final URI uri,
-                                        final String clientRole,
-                                        final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                        final AuthenticationParameters authenticationParameters) {
         throw new RestException(javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE,
                 "restart the specified function instance is not supported via mesh worker service");
     }
@@ -313,8 +306,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public void startFunctionInstances(final String tenant,
                                        final String namespace,
                                        final String componentName,
-                                       final String clientRole,
-                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                       final AuthenticationParameters authenticationParameters) {
 
     }
 
@@ -322,8 +314,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public void stopFunctionInstances(final String tenant,
                                       final String namespace,
                                       final String componentName,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
 
     }
 
@@ -331,8 +322,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public void restartFunctionInstances(final String tenant,
                                          final String namespace,
                                          final String componentName,
-                                         final String clientRole,
-                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                         final AuthenticationParameters authenticationParameters) {
 
     }
 
@@ -341,18 +331,16 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                               final String namespace,
                                               final String componentName,
                                               final URI uri,
-                                              final String clientRole,
-                                              final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                              final AuthenticationParameters authenticationParameters) {
         if (!isWorkerServiceAvailable()) {
             throwUnavailableException();
         }
 
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, componentName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, componentName, authenticationParameters);
         this.validateGetInfoRequestParams(tenant, namespace, componentName, ComponentTypeUtils.toString(componentType));
 
         FunctionStatsImpl functionStats = new FunctionStatsImpl();
@@ -378,9 +366,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                                                    final String componentName,
                                                                    final String instanceId,
                                                                    final URI uri,
-                                                                   final String clientRole,
-                                                                   final AuthenticationDataSource
-                                                                           clientAuthenticationDataHttps) {
+                                                                   final AuthenticationParameters authenticationParameters) {
         return new FunctionInstanceStatsDataImpl();
     }
 
@@ -391,16 +377,14 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                   final String input,
                                   final InputStream uploadedInputStream,
                                   final String topic,
-                                  final String clientRole,
-                                  final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                  final AuthenticationParameters authenticationParameters) {
         return "";
     }
 
     @Override
     public List<String> listFunctions(final String tenant,
                                       final String namespace,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         Set<String> result = new HashSet<>();
         try {
             String labelSelector;
@@ -464,18 +448,16 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                           final String namespace,
                                           final String componentName,
                                           final String key,
-                                          final String clientRole,
-                                          final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                          final AuthenticationParameters authenticationParameters) {
         if (!isWorkerServiceAvailable()) {
             throwUnavailableException();
         }
 
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, componentName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, componentName, authenticationParameters);
         this.validateGetInfoRequestParams(tenant, namespace, componentName, ComponentTypeUtils.toString(componentType));
 
         if (null == worker().getStateStoreAdminClient()) {
@@ -494,7 +476,6 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         String clusterName = worker().getWorkerConfig().getPulsarFunctionsCluster();
         String tableNs = getStateNamespace(tenant, namespace);
         String tableName = CommonUtil.createObjectName(clusterName, tenant, namespace, componentName);
-        ;
 
         String stateStorageServiceUrl = worker().getWorkerConfig().getStateStorageServiceUrl();
 
@@ -547,8 +528,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                  final String componentName,
                                  final String key,
                                  final FunctionState state,
-                                 final String clientRole,
-                                 final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                 final AuthenticationParameters authenticationParameters) {
 
         if (!isWorkerServiceAvailable()) {
             throwUnavailableException();
@@ -556,10 +536,9 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
 
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, componentName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, componentName, authenticationParameters);
         this.validateGetInfoRequestParams(tenant, namespace, componentName, ComponentTypeUtils.toString(componentType));
 
         if (null == worker().getStateStoreAdminClient()) {
@@ -578,7 +557,6 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         String clusterName = worker().getWorkerConfig().getPulsarFunctionsCluster();
         String tableNs = getStateNamespace(tenant, namespace);
         String tableName = CommonUtil.createObjectName(clusterName, tenant, namespace, componentName);
-        ;
 
         String stateStorageServiceUrl = worker().getWorkerConfig().getStateStorageServiceUrl();
 
@@ -614,15 +592,13 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     @Override
     public void uploadFunction(final InputStream uploadedInputStream,
                                final String path,
-                               String clientRole,
-                               final AuthenticationDataSource clientAuthenticationDataHttps) {
+                               final AuthenticationParameters authenticationParameters) {
 
     }
 
     @Override
     public StreamingOutput downloadFunction(String path,
-                                            String clientRole,
-                                            AuthenticationDataSource clientAuthenticationDataHttps) {
+                                            final AuthenticationParameters authenticationParameters) {
         // To do
         return null;
     }
@@ -631,8 +607,7 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     public StreamingOutput downloadFunction(String tenant,
                                             String namespace,
                                             String componentName,
-                                            String clientRole,
-                                            AuthenticationDataSource clientAuthenticationDataHttps,
+                                            final AuthenticationParameters authenticationParameters,
                                             boolean transformFunction) {
         // To do
         return null;
@@ -644,25 +619,28 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
     }
 
     @Override
-    public void reloadConnectors(String clientRole, final AuthenticationDataSource clientAuthenticationDataHttps) {
+    public void reloadConnectors(final AuthenticationParameters authenticationParameters) {
         meshWorkerServiceSupplier.get().getConnectorsManager().reloadConnectors();
     }
 
-    public boolean isSuperUser(String clientRole, AuthenticationDataSource authenticationDataSource) {
-        if (clientRole != null) {
+    public boolean isSuperUser(final AuthenticationParameters authenticationParameters) {
+        if (authenticationParameters != null && StringUtils.isNotEmpty(authenticationParameters.getClientRole())) {
             try {
                 if ((worker().getWorkerConfig().getSuperUserRoles() != null
-                        && worker().getWorkerConfig().getSuperUserRoles().contains(clientRole))) {
+                        && worker().getWorkerConfig().getSuperUserRoles()
+                        .contains(authenticationParameters.getClientRole()))) {
                     return true;
                 }
-                return worker().getAuthorizationService().isSuperUser(clientRole, authenticationDataSource)
+                return worker().getAuthorizationService().isSuperUser(authenticationParameters)
                         .get(worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), SECONDS);
             } catch (InterruptedException e) {
                 log.warn("Time-out {} sec while checking the role {} is a super user role ",
-                        worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), clientRole);
+                        worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(),
+                        authenticationParameters.getClientRole());
                 throw new RestException(INTERNAL_SERVER_ERROR, e.getMessage());
             } catch (Exception e) {
-                log.warn("Admin-client with Role - failed to check the role {} is a super user role {} ", clientRole,
+                log.warn("Admin-client with Role - failed to check the role {} is a super user role {} ",
+                        authenticationParameters.getClientRole(),
                         e.getMessage(), e);
                 throw new RestException(INTERNAL_SERVER_ERROR, e.getMessage());
             }
@@ -670,19 +648,20 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         return false;
     }
 
-    public boolean isAuthorizedRole(String tenant, String namespace, String clientRole,
-                                    AuthenticationDataSource authenticationData) throws PulsarAdminException {
+    public boolean isAuthorizedRole(String tenant, String namespace, AuthenticationParameters authenticationParameters)
+            throws PulsarAdminException {
         if (worker().getWorkerConfig().isAuthorizationEnabled()) {
             // skip authorization if client role is super-user
-            if (isSuperUser(clientRole, authenticationData)) {
+            if (isSuperUser(authenticationParameters)) {
                 return true;
             }
 
-            if (clientRole != null) {
+            if (authenticationParameters != null && StringUtils.isNotEmpty(authenticationParameters.getClientRole())) {
                 try {
                     TenantInfo tenantInfo = worker().getBrokerAdmin().tenants().getTenantInfo(tenant);
                     if (tenantInfo != null && worker().getAuthorizationService()
-                            .isTenantAdmin(tenant, clientRole, tenantInfo, authenticationData).get()) {
+                            .isTenantAdmin(tenant, authenticationParameters.getClientRole(), tenantInfo,
+                                    authenticationParameters.getClientAuthenticationDataSource()).get()) {
                         return true;
                     }
                 } catch (PulsarAdminException.NotFoundException | InterruptedException | ExecutionException e) {
@@ -691,8 +670,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
             }
 
             // check if role has permissions granted
-            if (clientRole != null && authenticationData != null) {
-                return allowFunctionOps(NamespaceName.get(tenant, namespace), clientRole, authenticationData);
+            if (authenticationParameters != null && StringUtils.isNotEmpty(authenticationParameters.getClientRole())) {
+                return allowFunctionOps(NamespaceName.get(tenant, namespace), authenticationParameters);
             } else {
                 return false;
             }
@@ -700,22 +679,22 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         return true;
     }
 
-    public boolean allowFunctionOps(NamespaceName namespaceName, String role,
-                                    AuthenticationDataSource authenticationData) {
+    public boolean allowFunctionOps(NamespaceName namespaceName, AuthenticationParameters authenticationParameters) {
+        String clientRole = authenticationParameters == null ? null : authenticationParameters.getClientRole();
         try {
             switch (componentType) {
                 case SINK:
                     return worker().getAuthorizationService().allowSinkOpsAsync(
-                                    namespaceName, role, authenticationData)
+                                    namespaceName, authenticationParameters)
                             .get(worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), SECONDS);
                 case SOURCE:
                     return worker().getAuthorizationService().allowSourceOpsAsync(
-                                    namespaceName, role, authenticationData)
+                                    namespaceName, authenticationParameters)
                             .get(worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), SECONDS);
                 case FUNCTION:
                 default:
                     return worker().getAuthorizationService().allowFunctionOpsAsync(
-                                    namespaceName, role, authenticationData)
+                                    namespaceName, authenticationParameters)
                             .get(worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), SECONDS);
             }
         } catch (InterruptedException e) {
@@ -723,7 +702,8 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                     worker().getWorkerConfig().getZooKeeperOperationTimeoutSeconds(), namespaceName);
             throw new RestException(INTERNAL_SERVER_ERROR, e.getMessage());
         } catch (Exception e) {
-            log.warn("Admin-client with Role - {} failed to get function permissions for namespace - {}. {}", role,
+            log.warn("Admin-client with Role - {} failed to get function permissions for namespace - {}. {}",
+                    clientRole,
                     namespaceName,
                     e.getMessage(), e);
             throw new RestException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -732,11 +712,11 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
 
     void validatePermission(String tenant,
                             String namespace,
-                            String clientRole,
-                            AuthenticationDataSource clientAuthenticationDataHttps,
+                            AuthenticationParameters authenticationParameters,
                             String componentName) {
+        String clientRole = authenticationParameters == null ? null : authenticationParameters.getClientRole();
         try {
-            if (!isAuthorizedRole(tenant, namespace, clientRole, clientAuthenticationDataHttps)) {
+            if (!isAuthorizedRole(tenant, namespace, authenticationParameters)) {
                 log.warn("{}/{}/{} Client [{}] is not authorized to get {}", tenant, namespace,
                         componentName, clientRole, ComponentTypeUtils.toString(componentType));
                 throw new RestException(UNAUTHORIZED,
@@ -761,7 +741,9 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         }
     }
 
-    void validateTenantIsExist(String tenant, String namespace, String name, String clientRole) {
+    void validateTenantIsExist(String tenant, String namespace, String name,
+                               final AuthenticationParameters authenticationParameters) {
+        String clientRole = authenticationParameters == null ? null : authenticationParameters.getClientRole();
         try {
             // Check tenant exists
             worker().getBrokerAdmin().tenants().getTenantInfo(tenant);

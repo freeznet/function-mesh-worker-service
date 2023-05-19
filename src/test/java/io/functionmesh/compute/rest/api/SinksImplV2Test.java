@@ -63,6 +63,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.distributedlog.api.namespace.Namespace;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.Namespaces;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.Tenants;
@@ -137,6 +138,7 @@ public class SinksImplV2Test {
     private V1StatefulSetStatus sinkStatefulSetStatus;
     private V1ObjectMeta sinkStatefulSetMetadata;
     private V1PodList sinkPodList;
+    private AuthenticationParameters parameters;
 
     @Before
     public void setup() throws Exception {
@@ -178,6 +180,8 @@ public class SinksImplV2Test {
         when(mockedKubernetesApi.create(any())).thenReturn(mockedKubernetesApiResponse);
         when(mockedKubernetesApi.update(any())).thenReturn(mockedKubernetesApiResponse);
         when(mockedKubernetesApiResponse.isSuccess()).thenReturn(true);
+
+        parameters = AuthenticationParameters.builder().clientRole("admin").build();
     }
 
     private void initFunctionStatefulSet() {
@@ -241,7 +245,7 @@ public class SinksImplV2Test {
         V1alpha1Sink mockV1alpha1Sink = mock(V1alpha1Sink.class);
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Sink);
         try {
-            this.resource.registerSink(tenant, namespace, sinkName, null, null, "function://public/default/test-sink", sinkConfig, null, null);
+            this.resource.registerSink(tenant, namespace, sinkName, null, null, "function://public/default/test-sink", sinkConfig, parameters);
         } catch (RestException restException) {
             Assert.fail(String.format("register {}/{}/{} sink failed, error message: {}", tenant, namespace, sinkName,
                     restException.getMessage()));
@@ -274,7 +278,7 @@ public class SinksImplV2Test {
         when(mockV1alpha1Sink.getSpec()).thenReturn(v1alpha1SinkOrigin.getSpec());
         when(mockedKubernetesApiResponse.getObject()).thenReturn(mockV1alpha1Sink);
         try {
-            this.resource.updateSink(tenant, namespace, sinkName, null, null, null, updateConfig, null, null, null);
+            this.resource.updateSink(tenant, namespace, sinkName, null, null, null, updateConfig, parameters, null);
         } catch (RestException restException) {
             Assert.fail(String.format("update {}/{}/{} sink failed, error message: {}", tenant, namespace, sinkName,
                     restException.getMessage()));
@@ -301,7 +305,7 @@ public class SinksImplV2Test {
         doReturn(Collections.singleton(CompletableFuture.completedFuture(
                 InstanceCommunication.MetricsData.newBuilder().build()))).when(resource)
                 .fetchSinkStatusFromGRPC(any(), any(), any(), any(), any(), any(), any(), any());
-        SinkStatus sinkStatus = this.resource.getSinkStatus(tenant, namespace, sinkName, null, null, null);
+        SinkStatus sinkStatus = this.resource.getSinkStatus(tenant, namespace, sinkName, null, parameters);
         Assert.assertNotNull(sinkStatus);
         Assert.assertEquals(1, sinkStatus.instances.size());
     }

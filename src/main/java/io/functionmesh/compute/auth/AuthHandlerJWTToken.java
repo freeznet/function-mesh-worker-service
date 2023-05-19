@@ -16,26 +16,26 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package io.functionmesh.compute.auth;
 
 import io.functionmesh.compute.MeshWorkerService;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 
 public class AuthHandlerJWTToken implements AuthHandler {
 
     private static final String HEADER_NAME = "Authorization";
-    private static final String TOKEN_TYPE  = "Bearer";
+    private static final String TOKEN_TYPE = "Bearer";
 
     @Override
-    public AuthResults handle(MeshWorkerService workerService, String clientRole, AuthenticationDataSource authDataHttps,
+    public AuthResults handle(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
                               String component) {
         AuthResults results = new AuthResults();
         Map<String, byte[]> valueMap = new HashMap<>();
-        String token = authDataHttps.getHttpHeader(HEADER_NAME).replaceAll(TOKEN_TYPE, "").trim();
+        String token = authenticationParameters.getClientAuthenticationDataSource().getHttpHeader(HEADER_NAME)
+                .replaceAll(TOKEN_TYPE, "").trim();
         if (StringUtils.isEmpty(token)) {
             throw new RuntimeException("Failed to get token from Authorization header");
         }

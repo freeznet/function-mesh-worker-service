@@ -149,7 +149,8 @@ public class FunctionsUtil {
         v1alpha1FunctionSpec.setClassName(functionConfig.getClassName());
 
         if (functionConfig.getProcessingGuarantees() != null) {
-            v1alpha1FunctionSpec.setProcessingGuarantee(CommonUtil.convertFunctionProcessingGuarantee(functionConfig.getProcessingGuarantees()));
+            v1alpha1FunctionSpec.setProcessingGuarantee(
+                    CommonUtil.convertFunctionProcessingGuarantee(functionConfig.getProcessingGuarantees()));
         }
 
         V1alpha1FunctionSpecInput v1alpha1FunctionSpecInput = new V1alpha1FunctionSpecInput();
@@ -426,8 +427,9 @@ public class FunctionsUtil {
 
         V1alpha1FunctionSpecPod specPod = new V1alpha1FunctionSpecPod();
 
-        if (customRuntimeOptions.getVpaSpec() != null ) {
-            V1alpha1FunctionSpecPodVpa vpaSpec = generateVPASpecFromCustomRuntimeOptions(customRuntimeOptions.getVpaSpec());
+        if (customRuntimeOptions.getVpaSpec() != null) {
+            V1alpha1FunctionSpecPodVpa vpaSpec =
+                    generateVPASpecFromCustomRuntimeOptions(customRuntimeOptions.getVpaSpec());
             specPod.setVpa(vpaSpec);
         }
 

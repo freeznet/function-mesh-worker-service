@@ -315,7 +315,6 @@ public class SinksImpTest {
                     null,
                     null,
                     sinkConfig,
-                    null,
                     null);
         } catch (Exception exception) {
             Assert.fail("Got exception: " + exception);
@@ -529,7 +528,6 @@ public class SinksImpTest {
                     null,
                     sinkConfig,
                     null,
-                    null,
                     null);
         } catch (Exception exception) {
             Assert.fail("Expected no exception to be thrown but got exception: " + exception);
@@ -690,7 +688,7 @@ public class SinksImpTest {
 
         SinksImpl sinks = spy(new SinksImpl(meshWorkerServiceSupplier));
         SinkStatus sinkStatus =
-                sinks.getSinkStatus(tenant, namespace, componentName, null, null, null);
+                sinks.getSinkStatus(tenant, namespace, componentName, null, null);
 
         SinkStatus expectedSinkStatus = new SinkStatus();
         SinkStatus.SinkInstanceStatus expectedSinkInstanceStatus =

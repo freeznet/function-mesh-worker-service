@@ -28,8 +28,8 @@ import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_CONNECTOR_TYPE;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_MANAGED;
 import static io.functionmesh.compute.util.CommonUtil.ANNOTATION_NEED_CLEANUP;
 import static io.functionmesh.compute.util.CommonUtil.buildDownloadPath;
-import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.downloadPackageFile;
+import static io.functionmesh.compute.util.CommonUtil.fetchBuiltinAutoscaler;
 import static io.functionmesh.compute.util.CommonUtil.getCustomLabelClaims;
 import static io.functionmesh.compute.util.CommonUtil.getExceptionInformation;
 import static org.apache.pulsar.common.functions.Utils.BUILTIN;
@@ -146,7 +146,8 @@ public class SinksUtil {
         v1alpha1SinkSpec.setNamespace(sinkConfig.getNamespace());
 
         if (sinkConfig.getProcessingGuarantees() != null) {
-            v1alpha1SinkSpec.setProcessingGuarantee(CommonUtil.convertSinkProcessingGuarantee(sinkConfig.getProcessingGuarantees()));
+            v1alpha1SinkSpec.setProcessingGuarantee(
+                    CommonUtil.convertSinkProcessingGuarantee(sinkConfig.getProcessingGuarantees()));
         }
 
         if (StringUtils.isNotEmpty(customConfig.getImagePullPolicy())) {
@@ -483,14 +484,16 @@ public class SinksUtil {
                         throw new IllegalArgumentException(
                                 "Function Package url is not valid. supported url (function/sink/source)");
                     }
-                } catch (Exception e){
+                } catch (Exception e) {
                     log.error("Invalid register sink request {}", sinkName, e);
                     throw new RestException(Response.Status.BAD_REQUEST, e.getMessage());
                 }
                 if (componentPackageFile != null) {
                     try {
-                        ClassLoader clsLoader = FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SINK,
-                                null, componentPackageFile, worker.getWorkerConfig().getNarExtractionDirectory());
+                        ClassLoader clsLoader =
+                                FunctionCommon.getClassLoaderFromPackage(Function.FunctionDetails.ComponentType.SINK,
+                                        null, componentPackageFile,
+                                        worker.getWorkerConfig().getNarExtractionDirectory());
                         inferredClassName = ConnectorUtils.getIOSinkClass((NarClassLoader) clsLoader);
                         if (StringUtils.isNotEmpty(inferredClassName)) {
                             v1alpha1SinkSpec.setClassName(inferredClassName);

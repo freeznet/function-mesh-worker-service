@@ -24,18 +24,17 @@ import io.kubernetes.client.openapi.ApiException;
 import java.io.IOException;
 import okhttp3.Call;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 
 public interface AuthHandler {
     String CLIENT_AUTHENTICATION_PLUGIN_CLAIM = "clientAuthenticationPlugin";
     String CLIENT_AUTHENTICATION_PARAMETERS_CLAIM = "clientAuthenticationParameters";
 
-    AuthResults handle(MeshWorkerService workerService, String clientRole,
-                       AuthenticationDataSource authDataHttps, String component);
+    AuthResults handle(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
+                       String component);
 
-    default void cleanUp(MeshWorkerService workerService, String clientRole,
-                         AuthenticationDataSource authDataHttps, String component,
-                         String clusterName, String tenant, String namespace, String componentName) {
+    default void cleanUp(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
+                         String component, String clusterName, String tenant, String namespace, String componentName) {
 
         try {
             Call deleteAuthSecretCall = workerService.getCoreV1Api()

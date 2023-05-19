@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package io.functionmesh.compute.auth;
 
 import static io.functionmesh.compute.auth.AuthHandler.CLIENT_AUTHENTICATION_PARAMETERS_CLAIM;
@@ -32,6 +31,7 @@ import io.functionmesh.compute.models.MeshWorkerServiceCustomConfig;
 import io.functionmesh.compute.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.junit.Test;
 
@@ -47,7 +47,9 @@ public class AuthHandlerInsecureTest {
         when(workerConfig.getBrokerClientAuthenticationParameters()).thenReturn(oauth2Parameters);
         when(meshWorkerService.getWorkerConfig()).thenReturn(workerConfig);
 
-        AuthResults results = new AuthHandlerInsecure().handle(meshWorkerService, "admin", null, "Function");
+        AuthenticationParameters parameters = AuthenticationParameters.builder().clientRole("admin").build();
+
+        AuthResults results = new AuthHandlerInsecure().handle(meshWorkerService, parameters, "Function");
 
         Map<String, byte[]> secretData = new HashMap<>();
         secretData.put(CLIENT_AUTHENTICATION_PLUGIN_CLAIM, "fake".getBytes());
@@ -70,7 +72,7 @@ public class AuthHandlerInsecureTest {
         when(customConfig.getOauth2SecretName()).thenReturn("test-secret");
         when(meshWorkerService.getMeshWorkerServiceCustomConfig()).thenReturn(customConfig);
 
-        AuthResults results2 = new AuthHandlerInsecure().handle(meshWorkerService, "admin", null, "Function");
+        AuthResults results2 = new AuthHandlerInsecure().handle(meshWorkerService, parameters, "Function");
 
         AuthResults expected2 = new AuthResults();
         V1alpha1FunctionSpecPulsarAuthConfigOauth2Config oauth2 =

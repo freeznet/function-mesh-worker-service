@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package io.functionmesh.compute.auth;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -33,7 +32,7 @@ import io.functionmesh.compute.util.CommonUtil;
 import io.kubernetes.client.openapi.models.V1SecretList;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 
 @Slf4j
 public class AuthHandlerOauth implements AuthHandler {
@@ -41,20 +40,21 @@ public class AuthHandlerOauth implements AuthHandler {
     public static final String KEY_NAME = "auth.json";
 
     @Override
-    public AuthResults handle(MeshWorkerService workerService, String clientRole,
-                              AuthenticationDataSource authDataHttps, String component) {
-        if (StringUtils.isNotEmpty(clientRole)) {
+    public AuthResults handle(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
+                              String component) {
+        if (authenticationParameters != null && StringUtils.isNotEmpty(authenticationParameters.getClientRole())) {
             String secretName;
             try {
                 String annotationKey = workerService.getMeshWorkerServiceCustomConfig().getOauth2SecretAnnotationKey();
                 log.info("get secret from namespace: {}, using annotation key to filter: {}, clientRole is: {}",
-                        workerService.getJobNamespace(), annotationKey, clientRole);
+                        workerService.getJobNamespace(), annotationKey, authenticationParameters.getClientRole());
                 V1SecretList secrets =
                         workerService.getCoreV1Api().listNamespacedSecret(workerService.getJobNamespace(), null, null,
                                 null, null, null, null, null, null, null, null);
                 secretName = secrets.getItems().stream().filter(secret -> {
                     if (secret.getMetadata() != null && secret.getMetadata().getAnnotations() != null) {
-                        return clientRole.equals(secret.getMetadata().getAnnotations().get(annotationKey));
+                        return authenticationParameters.getClientRole()
+                                .equals(secret.getMetadata().getAnnotations().get(annotationKey));
                     }
                     return false;
                 }).findFirst().get().getMetadata().getName();
@@ -79,7 +79,7 @@ public class AuthHandlerOauth implements AuthHandler {
     }
 
     @Override
-    public void cleanUp(MeshWorkerService workerService, String clientRole, AuthenticationDataSource authDataHttps,
+    public void cleanUp(MeshWorkerService workerService, AuthenticationParameters authenticationParameters,
                         String component, String clusterName, String tenant, String namespace, String componentName) {
         // Do nothing for oauth2 handler
     }

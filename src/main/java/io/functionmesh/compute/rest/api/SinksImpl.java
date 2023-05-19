@@ -64,7 +64,7 @@ import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.common.functions.Resources;
 import org.apache.pulsar.common.functions.UpdateOptionsImpl;
 import org.apache.pulsar.common.io.ConfigFieldDefinition;
@@ -141,16 +141,14 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             final FormDataContentDisposition fileDetail,
             final String sinkPkgUrl,
             final SinkConfig sinkConfig,
-            final String clientRole,
-            AuthenticationDataSource clientAuthenticationDataHttps) {
+            final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
         validateRegisterSinkRequestParams(tenant, namespace, sinkName, sinkConfig, uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, sinkName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, sinkName, authenticationParameters);
         String packageURL = sinkPkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -178,8 +176,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
         // override namesapce by configuration
         v1alpha1Sink.getMetadata().setNamespace(worker().getJobNamespace());
         try {
-            this.upsertSink(tenant, namespace, sinkName, sinkConfig, v1alpha1Sink, clientRole,
-                    clientAuthenticationDataHttps);
+            this.upsertSink(tenant, namespace, sinkName, sinkConfig, v1alpha1Sink, authenticationParameters);
             extractResponse(getResourceApi().create(v1alpha1Sink));
         } catch (RestException restException) {
             log.error(
@@ -209,17 +206,15 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             final FormDataContentDisposition fileDetail,
             final String sinkPkgUrl,
             final SinkConfig sinkConfig,
-            final String clientRole,
-            AuthenticationDataSource clientAuthenticationDataHttps,
+            final AuthenticationParameters authenticationParameters,
             UpdateOptionsImpl updateOptions) {
         validateSinkEnabled();
         validateUpdateSinkRequestParams(tenant, namespace, sinkName, sinkConfig, uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, sinkName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, sinkName, authenticationParameters);
         String packageURL = sinkPkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -273,8 +268,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             v1alpha1Sink.getMetadata().setNamespace(worker().getJobNamespace());
             v1alpha1Sink.getMetadata().setResourceVersion(v1alpha1SinkPre.getMetadata().getResourceVersion());
 
-            this.upsertSink(tenant, namespace, sinkName, sinkConfig, v1alpha1Sink, clientRole,
-                    clientAuthenticationDataHttps);
+            this.upsertSink(tenant, namespace, sinkName, sinkConfig, v1alpha1Sink, authenticationParameters);
             extractResponse(getResourceApi().update(v1alpha1Sink));
         } catch (Exception e) {
             log.error(
@@ -294,8 +288,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             final String sinkName,
             final String instanceId,
             final URI uri,
-            final String clientRole,
-            final AuthenticationDataSource clientAuthenticationDataHttps) {
+            final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
         SinkStatus.SinkInstanceStatus.SinkInstanceStatusData sinkInstanceStatusData =
                 new SinkStatus.SinkInstanceStatus.SinkInstanceStatusData();
@@ -308,14 +301,12 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             final String namespace,
             final String componentName,
             final URI uri,
-            final String clientRole,
-            final AuthenticationDataSource clientAuthenticationDataHttps) {
+            final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
         SinkStatus sinkStatus = new SinkStatus();
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, componentName);
@@ -433,6 +424,16 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
     }
 
     @Override
+    public SinkConfig getSinkInfo(String tenant, String namespace, String componentName,
+                                  AuthenticationParameters authenticationParameters) {
+        validateSinkEnabled();
+        this.validatePermission(tenant,
+                namespace,
+                authenticationParameters,
+                ComponentTypeUtils.toString(componentType));
+        return getSinkInfo(tenant, namespace, componentName);
+    }
+
     public SinkConfig getSinkInfo(
             final String tenant, final String namespace, final String componentName) {
         validateSinkEnabled();
@@ -457,10 +458,9 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
     @Override
     public List<String> listFunctions(final String tenant,
                                       final String namespace,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
-        return super.listFunctions(tenant, namespace, clientRole, clientAuthenticationDataHttps);
+        return super.listFunctions(tenant, namespace, authenticationParameters);
     }
 
     @Override
@@ -559,8 +559,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                             final String sinkName,
                             final SinkConfig sinkConfig,
                             V1alpha1Sink v1alpha1Sink,
-                            String clientRole,
-                            AuthenticationDataSource clientAuthenticationDataHttps) {
+                            AuthenticationParameters authenticationParameters) {
         try {
             V1alpha1SinkSpecPod podPolicy = v1alpha1Sink.getSpec().getPod();
             if (podPolicy == null) {
@@ -581,9 +580,9 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
 
             // set auth related
             if (worker().getWorkerConfig().isAuthenticationEnabled()) {
-                if (clientAuthenticationDataHttps != null) {
+                if (authenticationParameters != null) {
                     AuthResults results =
-                            CommonUtil.doAuth(worker(), clientRole, clientAuthenticationDataHttps, apiKind);
+                            CommonUtil.doAuth(worker(), authenticationParameters, apiKind);
                     if (results.getAuthSecretData() != null && !results.getAuthSecretData().isEmpty()) {
                         String authSecretName = KubernetesUtils.upsertSecret(apiKind.toLowerCase(), "auth",
                                 v1alpha1Sink.getSpec().getClusterName(), tenant, namespace, sinkName,
@@ -859,8 +858,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
     public void stopFunctionInstances(final String tenant,
                                       final String namespace,
                                       final String sinkName,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps)  {
+                                      final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
@@ -895,8 +893,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
     public void startFunctionInstances(final String tenant,
                                        final String namespace,
                                        final String sinkName,
-                                       final String clientRole,
-                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                       final AuthenticationParameters authenticationParameters) {
         validateSinkEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
@@ -939,8 +936,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
     public void restartFunctionInstances(final String tenant,
                                          final String namespace,
                                          final String sinkName,
-                                         final String clientRole,
-                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                         final AuthenticationParameters authenticationParameters) {
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
 

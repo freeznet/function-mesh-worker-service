@@ -32,6 +32,7 @@ import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Secret;
 import io.kubernetes.client.openapi.models.V1SecretList;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.common.util.RestException;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.junit.Assert;
@@ -79,6 +80,7 @@ public class CommonUtilTest {
         WorkerConfig workerConfig = mock(WorkerConfig.class);
         String oauth2Parameters = "{\"audience\":\"test-audience\",\"issuerUrl\":\"https://test.com/\""
                 + ",\"privateKey\":\"file:///mnt/secrets/auth.json\",\"type\":\"client_credentials\"}";
+        AuthenticationParameters parameters = AuthenticationParameters.builder().clientRole("admin").build();
         when(workerConfig.getBrokerClientAuthenticationPlugin()).thenReturn(CommonUtil.OAUTH_PLUGIN_NAME);
         when(workerConfig.getBrokerClientAuthenticationParameters()).thenReturn(oauth2Parameters);
 
@@ -99,13 +101,14 @@ public class CommonUtilTest {
         when(coreV1Api.listNamespacedSecret("default", null, null, null, null, null, null, null, null, null, null)).thenReturn(secrets);
         when(meshWorkerService.getCoreV1Api()).thenReturn(coreV1Api);
 
-        AuthResults results = CommonUtil.doAuth(meshWorkerService, "admin", null, "Function");
-        AuthResults expectedResults = new AuthHandlerOauth().handle(meshWorkerService, "admin", null, "Function");
+        AuthResults results = CommonUtil.doAuth(meshWorkerService, parameters, "Function");
+        AuthResults expectedResults = new AuthHandlerOauth().handle(meshWorkerService, parameters, "Function");
         assertEquals(expectedResults.getFunctionAuthConfig(), results.getFunctionAuthConfig());
 
         when(workerConfig.getBrokerClientAuthenticationPlugin()).thenReturn("Un-Supported-Auth-Provider");
+
         try {
-            CommonUtil.doAuth(meshWorkerService, "admin", null, "Function");
+            CommonUtil.doAuth(meshWorkerService, parameters, "Function");
             Assert.fail("Expecting a RestException is thrown");
         } catch (RestException e) {
             assertEquals(e.getMessage(), "No handler for given auth plugin: Un-Supported-Auth-Provider");

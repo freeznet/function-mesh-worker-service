@@ -64,7 +64,7 @@ import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pulsar.broker.authentication.AuthenticationDataSource;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.common.functions.UpdateOptionsImpl;
 import org.apache.pulsar.common.io.ConfigFieldDefinition;
 import org.apache.pulsar.common.io.ConnectorDefinition;
@@ -151,16 +151,14 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                                final FormDataContentDisposition fileDetail,
                                final String sourcePkgUrl,
                                final SourceConfig sourceConfig,
-                               final String clientRole,
-                               AuthenticationDataSource clientAuthenticationDataHttps) {
+                               final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
         validateRegisterSourceRequestParams(tenant, namespace, sourceName, sourceConfig, uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, sourceName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, sourceName, authenticationParameters);
         String packageURL = sourcePkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -189,7 +187,7 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
         v1alpha1Source.getMetadata().setNamespace(worker().getJobNamespace());
         try {
             this.upsertSource(tenant, namespace, sourceName, sourceConfig, v1alpha1Source,
-                    clientRole, clientAuthenticationDataHttps);
+                    authenticationParameters);
             extractResponse(getResourceApi().create(v1alpha1Source));
         } catch (RestException restException) {
             log.error(
@@ -212,17 +210,15 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                              final FormDataContentDisposition fileDetail,
                              final String sourcePkgUrl,
                              final SourceConfig sourceConfig,
-                             final String clientRole,
-                             AuthenticationDataSource clientAuthenticationDataHttps,
+                             final AuthenticationParameters authenticationParameters,
                              UpdateOptionsImpl updateOptions) {
         validateSourceEnabled();
         validateUpdateSourceRequestParams(tenant, namespace, sourceName, sourceConfig, uploadedInputStream != null);
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
-        this.validateTenantIsExist(tenant, namespace, sourceName, clientRole);
+        this.validateTenantIsExist(tenant, namespace, sourceName, authenticationParameters);
         String packageURL = sourcePkgUrl;
         if (uploadedInputStream != null && worker().getMeshWorkerServiceCustomConfig().isUploadEnabled()) {
             try {
@@ -280,7 +276,7 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
             v1alpha1Source.getMetadata().setNamespace(worker().getJobNamespace());
             v1alpha1Source.getMetadata().setResourceVersion(v1alpha1SourcePre.getMetadata().getResourceVersion());
             this.upsertSource(tenant, namespace, sourceName, sourceConfig, v1alpha1Source,
-                    clientRole, clientAuthenticationDataHttps);
+                    authenticationParameters);
             extractResponse(getResourceApi().update(v1alpha1Source));
         } catch (Exception e) {
             log.error("update {}/{}/{} source failed", tenant, namespace, sourceConfig, e);
@@ -292,14 +288,12 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                                         final String namespace,
                                         final String componentName,
                                         final URI uri,
-                                        final String clientRole,
-                                        final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                        final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
         SourceStatus sourceStatus = new SourceStatus();
         this.validatePermission(tenant,
                 namespace,
-                clientRole,
-                clientAuthenticationDataHttps,
+                authenticationParameters,
                 ComponentTypeUtils.toString(componentType));
 
         try {
@@ -422,10 +416,20 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                                                             final String sourceName,
                                                             final String instanceId,
                                                             final URI uri,
-                                                            final String clientRole,
-                                                            final AuthenticationDataSource dataSource) {
+                                                            final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
         return new SourceInstanceStatusData();
+    }
+
+    @Override
+    public SourceConfig getSourceInfo(String tenant, String namespace, String componentName,
+                                      AuthenticationParameters authenticationParameters) {
+        validateSourceEnabled();
+        this.validatePermission(tenant,
+                namespace,
+                authenticationParameters,
+                ComponentTypeUtils.toString(componentType));
+        return getSourceInfo(tenant, namespace, componentName);
     }
 
     public SourceConfig getSourceInfo(final String tenant,
@@ -470,8 +474,7 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                               final String sourceName,
                               SourceConfig sourceConfig,
                               V1alpha1Source v1alpha1Source,
-                              String clientRole,
-                              AuthenticationDataSource clientAuthenticationDataHttps) {
+                              AuthenticationParameters authenticationParameters) {
         try {
             V1alpha1SourceSpecPod podPolicy = v1alpha1Source.getSpec().getPod();
             if (podPolicy == null) {
@@ -492,9 +495,9 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
 
             // set auth related
             if (worker().getWorkerConfig().isAuthenticationEnabled()) {
-                if (clientAuthenticationDataHttps != null) {
+                if (authenticationParameters != null) {
                     AuthResults results =
-                            CommonUtil.doAuth(worker(), clientRole, clientAuthenticationDataHttps, apiKind);
+                            CommonUtil.doAuth(worker(), authenticationParameters, apiKind);
                     if (results.getAuthSecretData() != null && !results.getAuthSecretData().isEmpty()) {
                         String authSecretName = KubernetesUtils.upsertSecret(apiKind.toLowerCase(), "auth",
                                 v1alpha1Source.getSpec().getClusterName(), tenant, namespace, sourceName,
@@ -843,18 +846,16 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
     @Override
     public List<String> listFunctions(final String tenant,
                                       final String namespace,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
-        return super.listFunctions(tenant, namespace, clientRole, clientAuthenticationDataHttps);
+        return super.listFunctions(tenant, namespace, authenticationParameters);
     }
 
     @Override
     public void stopFunctionInstances(final String tenant,
                                       final String namespace,
                                       final String sourceName,
-                                      final String clientRole,
-                                      final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                      final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sourceName);
@@ -890,8 +891,7 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
     public void startFunctionInstances(final String tenant,
                                        final String namespace,
                                        final String sourceName,
-                                       final String clientRole,
-                                       final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                       final AuthenticationParameters authenticationParameters) {
         validateSourceEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sourceName);
@@ -937,8 +937,7 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
     public void restartFunctionInstances(final String tenant,
                                          final String namespace,
                                          final String sourceName,
-                                         final String clientRole,
-                                         final AuthenticationDataSource clientAuthenticationDataHttps) {
+                                         final AuthenticationParameters authenticationParameters) {
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sourceName);
 

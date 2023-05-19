@@ -67,6 +67,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.distributedlog.api.namespace.Namespace;
+import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.Namespaces;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.Tenants;
@@ -147,6 +148,7 @@ public class FunctionImplV2Test {
     private V1StatefulSetStatus functionStatefulSetStatus;
     private V1ObjectMeta functionStatefulSetMetadata;
     private V1PodList functionPodList;
+    private AuthenticationParameters parameters;
 
     @Before
     public void setup() throws Exception {
@@ -186,6 +188,8 @@ public class FunctionImplV2Test {
         when(mockedKubernetesApiResponse.isSuccess()).thenReturn(true);
 
         mockStaticMethod();
+
+        parameters = AuthenticationParameters.builder().clientRole("admin").build();
     }
 
     private void initFunctionStatefulSet() {
@@ -276,7 +280,7 @@ public class FunctionImplV2Test {
         doReturn(Collections.singleton(CompletableFuture.completedFuture(
                 InstanceCommunication.MetricsData.newBuilder().build()))).when(resource)
                 .fetchStatsFromGRPC(any(), any(), any(), any(), any(), any(), any());
-        FunctionStatsImpl functionStats = this.resource.getFunctionStats(tenant, namespace, function, null, null, null);
+        FunctionStatsImpl functionStats = this.resource.getFunctionStats(tenant, namespace, function, null, parameters);
         Assert.assertNotNull(functionStats);
         assertEquals(functionStats.instances.size(), 1);
     }
@@ -289,7 +293,7 @@ public class FunctionImplV2Test {
         when(mockedKubernetesApiResponse.getObject()).thenReturn(functionResource);
         try {
             this.resource.registerFunction(tenant, namespace, function, null, null, functionConfig.getJar(),
-                    functionConfig, null, null);
+                    functionConfig, parameters);
         } catch (
                 RestException restException) {
             Assert.fail(String.format(
@@ -322,7 +326,7 @@ public class FunctionImplV2Test {
         when(mockedKubernetesApiResponse.getObject()).thenReturn(functionResource);
         try {
             this.resource.registerFunction(tenant, namespace, function, null, null, functionConfig.getJar(),
-                    functionConfig, null, null);
+                    functionConfig, parameters);
         } catch (
                 RestException restException) {
             Assert.assertEquals("Runtime 'python' is not enabled", restException.getMessage());
@@ -340,7 +344,7 @@ public class FunctionImplV2Test {
                 "auth-param-test");
 
         try {
-            this.resource.deregisterFunction(tenant, namespace, function, null, null);
+            this.resource.deregisterFunction(tenant, namespace, function, parameters);
         } catch (Exception exception) {
             Assert.fail("Expected no exception to be thrown but got exception: " + exception);
         }
@@ -368,7 +372,7 @@ public class FunctionImplV2Test {
 
         try {
             this.resource.updateFunction(tenant, namespace, function, null, null, functionConfig.getJar(),
-                    updateConfig, null, null, null);
+                    updateConfig, parameters, null);
         } catch (
                 RestException restException) {
             Assert.fail(String.format(
@@ -394,7 +398,7 @@ public class FunctionImplV2Test {
         when(functionResource.getSpec()).thenReturn(functionSpec);
         when(mockedKubernetesApiResponse.getObject()).thenReturn(functionResource);
 
-        FunctionConfig functionConfig = this.resource.getFunctionInfo(tenant, namespace, function, null, null);
+        FunctionConfig functionConfig = this.resource.getFunctionInfo(tenant, namespace, function, parameters);
         Assert.assertNotNull(functionConfig);
         assertEquals(expectFunctionConfig(), functionConfig);
     }
@@ -415,7 +419,7 @@ public class FunctionImplV2Test {
         doReturn(Collections.singleton(CompletableFuture.completedFuture(
                 InstanceCommunication.MetricsData.newBuilder().build()))).when(resource)
                 .fetchFunctionStatusFromGRPC(any(), any(), any(), any(), any(), any(), any(), any());
-        FunctionStatus functionStatus = this.resource.getFunctionStatus(tenant, namespace, function, null, null, null);
+        FunctionStatus functionStatus = this.resource.getFunctionStatus(tenant, namespace, function, null, parameters);
         Assert.assertNotNull(functionStatus);
         assertEquals(1, functionStatus.instances.size());
     }
@@ -670,7 +674,7 @@ public class FunctionImplV2Test {
         when(mockedKubernetesApiResponse.getObject()).thenReturn(functionResource);
         try {
             this.resource.registerFunction(tenant, namespace, function, null, null, functionConfig.getJar(),
-                    functionConfig, null, null);
+                    functionConfig, parameters);
         } catch (
                 RestException restException) {
             Assert.fail(String.format(
