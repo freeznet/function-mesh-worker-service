@@ -15,7 +15,7 @@ fi
 ASSETS_DIR=release
 mkdir $ASSETS_DIR
 
-sudo wget https://github.com/mikefarah/yq/releases/download/v4.6.0/yq_linux_amd64 -O /usr/bin/yq
+sudo wget https://github.com/mikefarah/yq/releases/download/v4.33.3/yq_linux_amd64 -O /usr/bin/yq
 sudo chmod +x /usr/bin/yq
 yq --help
 
