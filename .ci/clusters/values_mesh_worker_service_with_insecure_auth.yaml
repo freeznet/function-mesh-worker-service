@@ -128,6 +128,7 @@ functions:
       functionEnabled: true
       sinkEnabled: true
       sourceEnabled: true
+      jobNamespace: pulsar
       functionRunnerImages:
         "JAVA": streamnative/pulsar-functions-java-runner:3.0.0.1
         "PYTHON": streamnative/pulsar-functions-python-runner:3.0.0.1

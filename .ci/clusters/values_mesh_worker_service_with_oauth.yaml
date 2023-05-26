@@ -131,6 +131,7 @@ functions:
       functionEnabled: true
       sinkEnabled: true
       sourceEnabled: true
+      jobNamespace: pulsar
       usingInsecureAuth: false
       functionRunnerImages:
         "JAVA": streamnative/pulsar-functions-java-runner:3.0.0.1

@@ -862,7 +862,8 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
         validateSinkEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
-            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(namespace, hashName));
+            String nameSpaceName = worker().getJobNamespace();
+            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Sink);
             } catch (IllegalArgumentException e) {
@@ -878,7 +879,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             final String patchStr = "[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":0}]";
 
             extractResponse(getResourceApi().patch(
-                    namespace,
+                    nameSpaceName,
                     hashName,
                     V1Patch.PATCH_FORMAT_JSON_PATCH,
                     new V1Patch(patchStr),
@@ -897,7 +898,8 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
         validateSinkEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
-            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(namespace, hashName));
+            String nameSpaceName = worker().getJobNamespace();
+            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Sink);
             } catch (IllegalArgumentException e) {
@@ -921,7 +923,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
             String patchStr = String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
 
             extractResponse(getResourceApi().patch(
-                    namespace,
+                    nameSpaceName,
                     hashName,
                     V1Patch.PATCH_FORMAT_JSON_PATCH,
                     new V1Patch(patchStr),
@@ -939,8 +941,9 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                                          final AuthenticationParameters authenticationParameters) {
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, sinkName);
+            String nameSpaceName = worker().getJobNamespace();
 
-            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(namespace, hashName));
+            V1alpha1Sink v1alpha1Sink = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Sink);
             } catch (IllegalArgumentException e) {
@@ -955,7 +958,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                 String patchStr = String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
 
                 extractResponse(getResourceApi().patch(
-                        namespace,
+                        nameSpaceName,
                         hashName,
                         V1Patch.PATCH_FORMAT_JSON_PATCH,
                         new V1Patch(patchStr),

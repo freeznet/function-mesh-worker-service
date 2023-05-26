@@ -872,7 +872,8 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
         validateFunctionEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
-            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            String nameSpaceName = worker().getJobNamespace();
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Function);
             } catch (IllegalArgumentException e) {
@@ -889,7 +890,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
             final String patchStr = "[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":0}]";
 
             extractResponse(getResourceApi().patch(
-                    namespace,
+                    nameSpaceName,
                     hashName,
                     V1Patch.PATCH_FORMAT_JSON_PATCH,
                     new V1Patch(patchStr),
@@ -908,7 +909,8 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
         validateFunctionEnabled();
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
-            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            String nameSpaceName = worker().getJobNamespace();
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Function);
             } catch (IllegalArgumentException e) {
@@ -935,7 +937,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                     String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
 
             extractResponse(getResourceApi().patch(
-                    namespace,
+                    nameSpaceName,
                     hashName,
                     V1Patch.PATCH_FORMAT_JSON_PATCH,
                     new V1Patch(patchStr),
@@ -953,8 +955,9 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                                          final AuthenticationParameters authenticationParameters) {
         try {
             String hashName = CommonUtil.generateObjectName(worker(), tenant, namespace, functionName);
+            String nameSpaceName = worker().getJobNamespace();
 
-            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(namespace, hashName));
+            V1alpha1Function v1alpha1Function = extractResponse(getResourceApi().get(nameSpaceName, hashName));
             try {
                 validateResourceObject(v1alpha1Function);
             } catch (IllegalArgumentException e) {
@@ -970,7 +973,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                         String.format("[{\"op\":\"replace\",\"path\":\"/spec/replicas\",\"value\":%d}]", minReplicas);
 
                 extractResponse(getResourceApi().patch(
-                        namespace,
+                        nameSpaceName,
                         hashName,
                         V1Patch.PATCH_FORMAT_JSON_PATCH,
                         new V1Patch(patchStr),
