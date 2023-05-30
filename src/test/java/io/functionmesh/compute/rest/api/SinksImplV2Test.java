@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.gson.Gson;
 import io.functionmesh.compute.MeshWorkerService;
 import io.functionmesh.compute.models.CustomRuntimeOptions;
@@ -39,12 +40,14 @@ import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecInput;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecJava;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPod;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodEnv;
+import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodImagePullSecrets;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodResources;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkStatus;
 import io.functionmesh.compute.util.SinksUtil;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
@@ -55,6 +58,7 @@ import io.kubernetes.client.openapi.models.V1StatefulSetStatus;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.kubernetes.client.util.generic.KubernetesApiResponse;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -231,11 +235,17 @@ public class SinksImplV2Test {
         return workerConfig;
     }
 
-    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() {
+    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() throws JsonProcessingException {
         MeshWorkerServiceCustomConfig meshWorkerServiceCustomConfig = mock(MeshWorkerServiceCustomConfig.class);
         when(meshWorkerServiceCustomConfig.isUploadEnabled()).thenReturn(true);
         when(meshWorkerServiceCustomConfig.isSinkEnabled()).thenReturn(true);
         when(meshWorkerServiceCustomConfig.isEnableTrustedMode()).thenReturn(true);
+        List<V1LocalObjectReference> imagePullSecrets = new ArrayList<>();
+        imagePullSecrets.add(new V1LocalObjectReference().name("test-pull-secret-from-config"));
+        when(meshWorkerServiceCustomConfig.getImagePullSecrets()).thenReturn(imagePullSecrets);
+        when(meshWorkerServiceCustomConfig.asV1alpha1SinkSpecPodImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
         return meshWorkerServiceCustomConfig;
     }
 
@@ -343,6 +353,7 @@ public class SinksImplV2Test {
         customRuntimeOptions.setServiceAccountName(serviceAccountName);
         customRuntimeOptions.setEnv(env.stream().collect(
                 Collectors.toMap(V1alpha1SinkSpecPodEnv::getName, V1alpha1SinkSpecPodEnv::getValue)));
+        customRuntimeOptions.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         sinkConfig.setCustomRuntimeOptions(new Gson().toJson(customRuntimeOptions));
         return sinkConfig;
     }
@@ -378,6 +389,10 @@ public class SinksImplV2Test {
         when(mockSinkSpecPod.getServiceAccountName()).thenReturn(serviceAccount);
         when(mockSinkSpecPod.getEnv()).thenReturn(env);
         when(mockSinkSpecPod.getBuiltinAutoscaler()).thenReturn(builtinAutoscaler);
+        when(mockSinkSpecPod.getImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         when(mockSinkSpec.getSubscriptionName()).thenReturn(outputTopic);
         when(mockSinkSpec.getRetainOrdering()).thenReturn(false);
@@ -400,6 +415,10 @@ public class SinksImplV2Test {
     private void verifyParameterForCreate(V1alpha1Sink v1alpha1SinkOrigin, V1alpha1Sink v1alpha1SinkFinal) {
         v1alpha1SinkOrigin.getSpec().setImage(runnerImage);
         v1alpha1SinkOrigin.getSpec().getPod().setServiceAccountName(serviceAccountName);
+        v1alpha1SinkOrigin.getSpec().getPod().setImagePullSecrets(Arrays.asList(
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
         //if authenticationEnabled=true,v1alpha1SinkOrigin should set pod policy
 
         Assert.assertEquals(v1alpha1SinkOrigin, v1alpha1SinkFinal);
@@ -424,6 +443,11 @@ public class SinksImplV2Test {
         // get from `buildDownloadPath(worker.getWorkerConfig().getDownloadDirectory(), archive))`
         v1alpha1SinkOrigin.getSpec().getJava().setJar("/tmp/test-sink");
         //if authenticationEnabled=true,v1alpha1SinkOrigin should set pod policy
+
+        v1alpha1SinkOrigin.getSpec().getPod().setImagePullSecrets(Arrays.asList(
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SinkSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         Assert.assertEquals(v1alpha1SinkOrigin, v1alpha1SinkFinal);
     }
@@ -459,6 +483,7 @@ public class SinksImplV2Test {
         HPASpec hpaSpec = new HPASpec();
         hpaSpec.setBuiltinCPURule("AverageUtilizationCPUPercent80");
         customRuntimeOptionsExpect.setHpaSpec(hpaSpec);
+        customRuntimeOptionsExpect.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         String customRuntimeOptionsJSON = new Gson().toJson(customRuntimeOptionsExpect, CustomRuntimeOptions.class);
 
         Resources resourcesExpect = new Resources();

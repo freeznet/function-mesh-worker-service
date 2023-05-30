@@ -553,7 +553,10 @@ public class SourcesImpl extends MeshComponentImpl<V1alpha1Source, V1alpha1Sourc
                 podPolicy.setServiceAccountName(customConfig.getDefaultServiceAccountName());
             }
             if (customConfig.getImagePullSecrets() != null && !customConfig.getImagePullSecrets().isEmpty()) {
-                podPolicy.setImagePullSecrets(customConfig.asV1alpha1SourceSpecPodImagePullSecrets());
+                if (podPolicy.getImagePullSecrets() == null) {
+                    podPolicy.setImagePullSecrets(new ArrayList<>());
+                }
+                podPolicy.getImagePullSecrets().addAll(customConfig.asV1alpha1SourceSpecPodImagePullSecrets());
             }
             List<V1alpha1SourceSpecPodInitContainers> initContainersList =
                     customConfig.asV1alpha1SourceSpecPodInitContainers();

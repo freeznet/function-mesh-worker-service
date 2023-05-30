@@ -54,6 +54,7 @@ import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPod;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodAutoScalingBehavior;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodAutoScalingMetrics;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodEnv;
+import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodImagePullSecrets;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodResources;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpa;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPodVpaResourcePolicy;
@@ -63,6 +64,7 @@ import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecPulsar;
 import io.functionmesh.compute.sinks.models.V1alpha1SinkSpecSecretsMap;
 import io.functionmesh.compute.worker.MeshConnectorsManager;
 import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V2beta2HorizontalPodAutoscalerBehavior;
 import io.kubernetes.client.openapi.models.V2beta2MetricSpec;
 import java.io.File;
@@ -78,6 +80,7 @@ import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.typetools.TypeResolver;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
@@ -446,6 +449,13 @@ public class SinksUtil {
             specPod.setVpa(vpaSpec);
         }
 
+        if (customRuntimeOptions.getImagePullSecrets() != null) {
+            customRuntimeOptions.getImagePullSecrets().forEach(secret -> {
+                V1alpha1SinkSpecPodImagePullSecrets specPodImagePullSecrets = new V1alpha1SinkSpecPodImagePullSecrets().name(secret);
+                specPod.addImagePullSecretsItem(specPodImagePullSecrets);
+            });
+        }
+
         v1alpha1SinkSpec.setPod(specPod);
 
         if (sinkConfig.getSecrets() != null && !sinkConfig.getSecrets().isEmpty()) {
@@ -597,6 +607,15 @@ public class SinksUtil {
             if (vpaSpec != null) {
                 VPASpec configVPASpec = generateVPASpecFromSinkConfig(vpaSpec);
                 customRuntimeOptions.setVpaSpec(configVPASpec);
+            }
+
+            if (CollectionUtils.isNotEmpty(v1alpha1SinkSpec.getPod().getImagePullSecrets())) {
+                customRuntimeOptions.setImagePullSecrets(v1alpha1SinkSpec.getPod().getImagePullSecrets().stream().map(
+                        V1alpha1SinkSpecPodImagePullSecrets::getName).collect(Collectors.toCollection(ArrayList::new)));
+                if (CollectionUtils.isNotEmpty(customConfig.getImagePullSecrets())) {
+                    customRuntimeOptions.getImagePullSecrets().removeAll(customConfig.getImagePullSecrets().stream().map(
+                            V1LocalObjectReference::getName).toList());
+                }
             }
         }
 

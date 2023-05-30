@@ -50,6 +50,7 @@ import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPod;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodAutoScalingBehavior;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodAutoScalingMetrics;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodEnv;
+import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodImagePullSecrets;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodResources;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodVpa;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodVpaResourcePolicy;
@@ -69,6 +70,7 @@ import io.functionmesh.compute.models.VPAContainerPolicy;
 import io.functionmesh.compute.models.VPASpec;
 import io.functionmesh.compute.models.VPAUpdatePolicy;
 import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V2beta2HorizontalPodAutoscalerBehavior;
 import io.kubernetes.client.openapi.models.V2beta2MetricSpec;
 import java.io.File;
@@ -82,6 +84,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
@@ -483,6 +486,14 @@ public class FunctionsUtil {
             throw new IllegalArgumentException(
                     "Error while converting volumes/volumeMounts resources from custom config", e);
         }
+
+        if (customRuntimeOptions.getImagePullSecrets() != null) {
+            customRuntimeOptions.getImagePullSecrets().forEach(secret -> {
+                V1alpha1FunctionSpecPodImagePullSecrets specPodImagePullSecrets = new V1alpha1FunctionSpecPodImagePullSecrets().name(secret);
+                specPod.addImagePullSecretsItem(specPodImagePullSecrets);
+            });
+        }
+
         v1alpha1FunctionSpec.setPod(specPod);
 
 
@@ -648,6 +659,15 @@ public class FunctionsUtil {
             if (vpaSpec != null) {
                 VPASpec configVPASpec = generateVPASpecFromFunctionConfig(vpaSpec);
                 customRuntimeOptions.setVpaSpec(configVPASpec);
+            }
+
+            if (CollectionUtils.isNotEmpty(v1alpha1FunctionSpec.getPod().getImagePullSecrets())) {
+                customRuntimeOptions.setImagePullSecrets(v1alpha1FunctionSpec.getPod().getImagePullSecrets().stream().map(
+                        V1alpha1FunctionSpecPodImagePullSecrets::getName).collect(Collectors.toCollection(ArrayList::new)));
+                if (CollectionUtils.isNotEmpty(customConfig.getImagePullSecrets())) {
+                    customRuntimeOptions.getImagePullSecrets().removeAll(customConfig.getImagePullSecrets().stream().map(
+                            V1LocalObjectReference::getName).toList());
+                }
             }
         }
 

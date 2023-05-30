@@ -28,6 +28,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.gson.Gson;
 import io.functionmesh.compute.MeshWorkerService;
 import io.functionmesh.compute.functions.models.V1alpha1Function;
@@ -38,6 +39,7 @@ import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecJava;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecOutput;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPod;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodEnv;
+import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodImagePullSecrets;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionSpecPodResources;
 import io.functionmesh.compute.functions.models.V1alpha1FunctionStatus;
 import io.functionmesh.compute.models.CustomRuntimeOptions;
@@ -48,6 +50,7 @@ import io.functionmesh.compute.util.FunctionsUtil;
 import io.functionmesh.compute.util.PackageManagementServiceUtil;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
@@ -58,6 +61,7 @@ import io.kubernetes.client.openapi.models.V1StatefulSetStatus;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.kubernetes.client.util.generic.KubernetesApiResponse;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -239,7 +243,7 @@ public class FunctionImplV2Test {
         return workerConfig;
     }
 
-    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() {
+    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() throws JsonProcessingException {
         MeshWorkerServiceCustomConfig meshWorkerServiceCustomConfig = mock(MeshWorkerServiceCustomConfig.class);
         when(meshWorkerServiceCustomConfig.isUploadEnabled()).thenReturn(true);
         when(meshWorkerServiceCustomConfig.isFunctionEnabled()).thenReturn(true);
@@ -252,6 +256,12 @@ public class FunctionImplV2Test {
         List<String> disabledRuntimes = new ArrayList<>();
         disabledRuntimes.add("python");
         when(meshWorkerServiceCustomConfig.getDisabledRuntimes()).thenReturn(disabledRuntimes);
+        List<V1LocalObjectReference> imagePullSecrets = new ArrayList<>();
+        imagePullSecrets.add(new V1LocalObjectReference().name("test-pull-secret-from-config"));
+        when(meshWorkerServiceCustomConfig.getImagePullSecrets()).thenReturn(imagePullSecrets);
+        when(meshWorkerServiceCustomConfig.asV1alpha1FunctionSpecPodImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1FunctionSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
         return meshWorkerServiceCustomConfig;
     }
 
@@ -456,6 +466,7 @@ public class FunctionImplV2Test {
         customRuntimeOptions.setServiceAccountName(serviceAccountName);
         customRuntimeOptions.setEnv(env.stream()
                 .collect(Collectors.toMap(V1alpha1FunctionSpecPodEnv::getName, V1alpha1FunctionSpecPodEnv::getValue)));
+        customRuntimeOptions.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         when(functionConfig.getCustomRuntimeOptions()).thenReturn(new Gson().toJson(customRuntimeOptions));
 
         return functionConfig;
@@ -512,10 +523,10 @@ public class FunctionImplV2Test {
         Assert.assertEquals(functionConfig.getLogTopic(), v1alpha1FunctionFinal.getSpec().getLogTopic());
         Assert.assertEquals(functionConfig.getOutput(), v1alpha1FunctionFinal.getSpec().getOutput().getTopic());
 
-        if (workerService.getMeshWorkerServiceCustomConfig().isEnableTrustedMode()) {
-            if (functionConfig.getCustomRuntimeOptions() != null) {
-                CustomRuntimeOptions customRuntimeOptions =
-                        new Gson().fromJson(functionConfig.getCustomRuntimeOptions(), CustomRuntimeOptions.class);
+        if (functionConfig.getCustomRuntimeOptions() != null) {
+            CustomRuntimeOptions customRuntimeOptions =
+                    new Gson().fromJson(functionConfig.getCustomRuntimeOptions(), CustomRuntimeOptions.class);
+            if (workerService.getMeshWorkerServiceCustomConfig().isEnableTrustedMode()) {
                 if (StringUtils.isNotEmpty(customRuntimeOptions.getRunnerImage())) {
                     Assert.assertEquals(customRuntimeOptions.getRunnerImage(),
                             v1alpha1FunctionFinal.getSpec().getImage());
@@ -534,6 +545,15 @@ public class FunctionImplV2Test {
                             v1alpha1FunctionFinal.getSpec().getImage());
                 }
             }
+
+            List<String> imagePullSecrets = customRuntimeOptions.getImagePullSecrets();
+            if (imagePullSecrets == null) {
+                imagePullSecrets = new ArrayList<>();
+            }
+            imagePullSecrets.addAll(workerService.getMeshWorkerServiceCustomConfig().getImagePullSecrets().stream().map(secret -> secret.getName()).collect(
+                    Collectors.toList()));
+            Assert.assertEquals(imagePullSecrets, v1alpha1FunctionFinal.getSpec().getPod().getImagePullSecrets().stream().map(secret -> secret.getName()).collect(
+                    Collectors.toList()));;
         }
 
     }
@@ -554,6 +574,10 @@ public class FunctionImplV2Test {
             }
         }).toString(), v1alpha1FunctionFinal.getSpec().getResources().toString());
         v1alpha1FunctionOrigin.getSpec().setResources(v1alpha1FunctionFinal.getSpec().getResources());
+        v1alpha1FunctionOrigin.getSpec().getPod().setImagePullSecrets(Arrays.asList(
+                new V1alpha1FunctionSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1FunctionSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
         //if authenticationEnabled=true,v1alpha1FunctionOrigin should set pod policy
 
         Assert.assertEquals(v1alpha1FunctionOrigin, v1alpha1FunctionFinal);
@@ -583,6 +607,10 @@ public class FunctionImplV2Test {
         when(functionSpecPod.getServiceAccountName()).thenReturn(serviceAccount);
         when(functionSpecPod.getEnv()).thenReturn(env);
         when(functionSpecPod.getBuiltinAutoscaler()).thenReturn(builtinAutoscaler);
+        when(functionSpecPod.getImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1FunctionSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1FunctionSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         when(functionSpec.getSubscriptionName()).thenReturn(outputTopic);
         when(functionSpec.getRetainKeyOrdering()).thenReturn(false);
@@ -625,6 +653,7 @@ public class FunctionImplV2Test {
         HPASpec hpaSpec = new HPASpec();
         hpaSpec.setBuiltinCPURule("AverageUtilizationCPUPercent80");
         customRuntimeOptionsExpect.setHpaSpec(hpaSpec);
+        customRuntimeOptionsExpect.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         String customRuntimeOptionsJSON = new Gson().toJson(customRuntimeOptionsExpect, CustomRuntimeOptions.class);
 
         Resources resourcesExpect = new Resources();

@@ -635,7 +635,10 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                 podPolicy.setServiceAccountName(customConfig.getDefaultServiceAccountName());
             }
             if (customConfig.getImagePullSecrets() != null && !customConfig.getImagePullSecrets().isEmpty()) {
-                podPolicy.setImagePullSecrets(customConfig.asV1alpha1FunctionSpecPodImagePullSecrets());
+                if (podPolicy.getImagePullSecrets() == null) {
+                    podPolicy.setImagePullSecrets(new ArrayList<>());
+                }
+                podPolicy.getImagePullSecrets().addAll(customConfig.asV1alpha1FunctionSpecPodImagePullSecrets());
             }
             List<V1alpha1FunctionSpecPodInitContainers> initContainersList =
                     customConfig.asV1alpha1FunctionSpecPodInitContainers();

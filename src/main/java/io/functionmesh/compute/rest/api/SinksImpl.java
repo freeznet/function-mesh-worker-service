@@ -638,7 +638,10 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                 podPolicy.setServiceAccountName(customConfig.getDefaultServiceAccountName());
             }
             if (customConfig.getImagePullSecrets() != null && !customConfig.getImagePullSecrets().isEmpty()) {
-                podPolicy.setImagePullSecrets(customConfig.asV1alpha1SinkSpecPodImagePullSecrets());
+                if (podPolicy.getImagePullSecrets() == null) {
+                    podPolicy.setImagePullSecrets(new ArrayList<>());
+                }
+                podPolicy.getImagePullSecrets().addAll(customConfig.asV1alpha1SinkSpecPodImagePullSecrets());
             }
             List<V1alpha1SinkSpecPodInitContainers> initContainersList =
                     customConfig.asV1alpha1SinkSpecPodInitContainers();

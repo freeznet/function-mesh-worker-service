@@ -19,6 +19,7 @@
 package io.functionmesh.compute.models;
 
 import io.functionmesh.compute.annotation.TrustedModeOnly;
+import java.util.List;
 import java.util.Map;
 import lombok.Data;
 
@@ -30,6 +31,7 @@ public class CustomRuntimeOptions {
     private int maxReplicas;
     private Map<String, String> env;
     private VPASpec vpaSpec;
+    private List<String> imagePullSecrets;
 
     @TrustedModeOnly
     private boolean managed = true;

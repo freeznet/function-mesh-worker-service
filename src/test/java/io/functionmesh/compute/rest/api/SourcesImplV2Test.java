@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.gson.Gson;
 import io.functionmesh.compute.MeshWorkerService;
 import io.functionmesh.compute.models.CustomRuntimeOptions;
@@ -38,12 +39,14 @@ import io.functionmesh.compute.sources.models.V1alpha1SourceSpec;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecJava;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPod;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodEnv;
+import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodImagePullSecrets;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodResources;
 import io.functionmesh.compute.sources.models.V1alpha1SourceStatus;
 import io.functionmesh.compute.util.SourcesUtil;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
@@ -54,6 +57,7 @@ import io.kubernetes.client.openapi.models.V1StatefulSetStatus;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.kubernetes.client.util.generic.KubernetesApiResponse;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -228,11 +232,17 @@ public class SourcesImplV2Test {
         return workerConfig;
     }
 
-    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() {
+    private MeshWorkerServiceCustomConfig mockMeshWorkerServiceCustomConfig() throws JsonProcessingException {
         MeshWorkerServiceCustomConfig meshWorkerServiceCustomConfig = mock(MeshWorkerServiceCustomConfig.class);
         when(meshWorkerServiceCustomConfig.isUploadEnabled()).thenReturn(true);
         when(meshWorkerServiceCustomConfig.isSourceEnabled()).thenReturn(true);
         when(meshWorkerServiceCustomConfig.isEnableTrustedMode()).thenReturn(true);
+        List<V1LocalObjectReference> imagePullSecrets = new ArrayList<>();
+        imagePullSecrets.add(new V1LocalObjectReference().name("test-pull-secret-from-config"));
+        when(meshWorkerServiceCustomConfig.getImagePullSecrets()).thenReturn(imagePullSecrets);
+        when(meshWorkerServiceCustomConfig.asV1alpha1SourceSpecPodImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
         return meshWorkerServiceCustomConfig;
     }
 
@@ -342,6 +352,7 @@ public class SourcesImplV2Test {
         customRuntimeOptions.setServiceAccountName(serviceAccountName);
         customRuntimeOptions.setEnv(env.stream().collect(
                 Collectors.toMap(V1alpha1SourceSpecPodEnv::getName, V1alpha1SourceSpecPodEnv::getValue)));
+        customRuntimeOptions.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         sourceConfig.setCustomRuntimeOptions(new Gson().toJson(customRuntimeOptions));
         return sourceConfig;
     }
@@ -372,6 +383,10 @@ public class SourcesImplV2Test {
         when(mockSourceSpecPod.getServiceAccountName()).thenReturn(serviceAccount);
         when(mockSourceSpecPod.getEnv()).thenReturn(env);
         when(mockSourceSpecPod.getBuiltinAutoscaler()).thenReturn(builtinAutoscaler);
+        when(mockSourceSpecPod.getImagePullSecrets()).thenReturn(Arrays.asList(
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         when(mockSourceSpec.getJava()).thenReturn(mockSourceSpecJava);
         when(mockSourceSpecJava.getJar()).thenReturn("test.jar");
@@ -388,6 +403,11 @@ public class SourcesImplV2Test {
         v1alpha1SourceOrigin.getSpec().setImage(runnerImage);
         v1alpha1SourceOrigin.getSpec().getPod().setServiceAccountName(serviceAccountName);
         //if authenticationEnabled=true,v1alpha1SourceOrigin should set pod policy
+
+        v1alpha1SourceOrigin.getSpec().getPod().setImagePullSecrets(Arrays.asList(
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         Assert.assertEquals(v1alpha1SourceOrigin, v1alpha1SourceFinal);
     }
@@ -410,6 +430,10 @@ public class SourcesImplV2Test {
         }).toString(), v1alpha1SourceFinal.getSpec().getResources().toString());
         v1alpha1SourceOrigin.getSpec().setResources(v1alpha1SourceFinal.getSpec().getResources());
         v1alpha1SourceOrigin.getSpec().getJava().setJar("/tmp/test-source");
+        v1alpha1SourceOrigin.getSpec().getPod().setImagePullSecrets(Arrays.asList(
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret"),
+                new V1alpha1SourceSpecPodImagePullSecrets().name("test-pull-secret-from-config")
+        ));
 
         Assert.assertEquals(v1alpha1SourceOrigin, v1alpha1SourceFinal);
     }
@@ -445,6 +469,7 @@ public class SourcesImplV2Test {
         HPASpec hpaSpec = new HPASpec();
         hpaSpec.setBuiltinCPURule("AverageUtilizationCPUPercent80");
         customRuntimeOptionsExpect.setHpaSpec(hpaSpec);
+        customRuntimeOptionsExpect.setImagePullSecrets(Arrays.asList("test-pull-secret"));
         String customRuntimeOptionsJSON = new Gson().toJson(customRuntimeOptionsExpect, CustomRuntimeOptions.class);
 
         Resources resourcesExpect = new Resources();

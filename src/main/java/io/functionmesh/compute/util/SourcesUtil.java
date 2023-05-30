@@ -54,6 +54,7 @@ import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPod;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodAutoScalingBehavior;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodAutoScalingMetrics;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodEnv;
+import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodImagePullSecrets;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodResources;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpa;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPodVpaResourcePolicy;
@@ -63,6 +64,7 @@ import io.functionmesh.compute.sources.models.V1alpha1SourceSpecPulsar;
 import io.functionmesh.compute.sources.models.V1alpha1SourceSpecSecretsMap;
 import io.functionmesh.compute.worker.MeshConnectorsManager;
 import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.openapi.models.V1LocalObjectReference;
 import io.kubernetes.client.openapi.models.V2beta2HorizontalPodAutoscalerBehavior;
 import io.kubernetes.client.openapi.models.V2beta2MetricSpec;
 import java.io.File;
@@ -78,6 +80,7 @@ import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import net.jodah.typetools.TypeResolver;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.pulsar.common.functions.ProducerConfig;
@@ -398,6 +401,14 @@ public class SourcesUtil {
             throw new IllegalArgumentException(
                     "Error while converting volumes/volumeMounts resources from custom config", e);
         }
+
+        if (customRuntimeOptions.getImagePullSecrets() != null) {
+            customRuntimeOptions.getImagePullSecrets().forEach(secret -> {
+                V1alpha1SourceSpecPodImagePullSecrets specPodImagePullSecrets = new V1alpha1SourceSpecPodImagePullSecrets().name(secret);
+                specPod.addImagePullSecretsItem(specPodImagePullSecrets);
+            });
+        }
+
         v1alpha1SourceSpec.setPod(specPod);
 
         if (sourceConfig.getSecrets() != null && !sourceConfig.getSecrets().isEmpty()) {
@@ -601,6 +612,15 @@ public class SourcesUtil {
             if (vpaSpec != null) {
                 VPASpec configVPASpec = generateVPASpecFromSourceConfig(vpaSpec);
                 customRuntimeOptions.setVpaSpec(configVPASpec);
+            }
+
+            if (CollectionUtils.isNotEmpty(v1alpha1SourceSpec.getPod().getImagePullSecrets())) {
+                customRuntimeOptions.setImagePullSecrets(v1alpha1SourceSpec.getPod().getImagePullSecrets().stream().map(
+                        V1alpha1SourceSpecPodImagePullSecrets::getName).collect(Collectors.toCollection(ArrayList::new)));
+                if (CollectionUtils.isNotEmpty(customConfig.getImagePullSecrets())) {
+                    customRuntimeOptions.getImagePullSecrets().removeAll(customConfig.getImagePullSecrets().stream().map(
+                            V1LocalObjectReference::getName).toList());
+                }
             }
         }
 
