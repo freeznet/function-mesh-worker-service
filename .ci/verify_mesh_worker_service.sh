@@ -27,8 +27,13 @@ SYMMETRIC=${SYMMETRIC:-"false"}
 FUNCTION=${FUNCTION:-"false"}
 WITH_AUTH=${WITH_AUTH:-"false"}
 
+if [ "x${WITH_AUTH}" = "xtrue" ]; then
+  export JOB_NAMESPACE=pulsar
+fi
+
 source ${PULSAR_HOME}/.ci/helm.sh
 
+ci::ensure_job_namespace
 ci::ensure_mesh_worker_service_role
 ci::ensure_function_mesh_config
 if [ "x${WITH_AUTH}" = "xtrue" ]; then

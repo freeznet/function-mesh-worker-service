@@ -28,6 +28,7 @@ KIND_BIN=$OUTPUT_BIN/kind
 HELM=${OUTPUT_BIN}/helm
 KUBECTL=${OUTPUT_BIN}/kubectl
 NAMESPACE=default
+JOB_NAMESPACE=${JOB_NAMESPACE:-default}
 CLUSTER=sn-platform
 CLUSTER_ID=$(uuidgen | tr "[:upper:]" "[:lower:]")
 
@@ -207,13 +208,13 @@ function ci::test_function_runners() {
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-java" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-java" | wc -l)
     while [[ ${WC} -lt 1 ]]; do
       echo ${WC};
       sleep 20
-      ${KUBECTL} get pods -n ${NAMESPACE}
-      ${KUBECTL} describe pod pf-public-default-test-java-0 
-      WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-java" | wc -l)
+      ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+      ${KUBECTL} describe pod -n ${JOB_NAMESPACE} pf-public-default-test-java-0
+      WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-java" | wc -l)
     done
     echo "java runner test done"
     ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --tenant public --namespace default --name test-java
@@ -222,12 +223,12 @@ function ci::test_function_runners() {
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-python" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-python" | wc -l)
     while [[ ${WC} -lt 1 ]]; do
       echo ${WC};
       sleep 20
-      ${KUBECTL} get pods -n ${NAMESPACE}
-      WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-python" | wc -l)
+      ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+      WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-python" | wc -l)
     done
     echo "python runner test done"
     ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --tenant public --namespace default --name test-python
@@ -238,12 +239,12 @@ function ci::test_function_runners() {
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-go" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-go" | wc -l)
     while [[ ${WC} -lt 1 ]]; do
       echo ${WC};
       sleep 20
-      ${KUBECTL} get pods -n ${NAMESPACE}
-      WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "test-go" | wc -l)
+      ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+      WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "test-go" | wc -l)
     done
     echo "golang runner test done"
     ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --tenant public --namespace default --name test-go
@@ -316,16 +317,20 @@ function ci:verify_exclamation_function_with_auth() {
     return 1
 }
 
+function ci::ensure_job_namespace() {
+  ${KUBECTL} create ns ${JOB_NAMESPACE} || true
+}
+
 function ci::ensure_mesh_worker_service_role() {
   ${KUBECTL} create clusterrolebinding broker-acct-manager-role-binding --clusterrole=function-mesh-function-mesh-controller-manager --serviceaccount=default:sn-platform-pulsar-broker-acct
 }
 
 function ci::ensure_function_mesh_config() {
-  ${KUBECTL} apply -f ${FUNCTION_MESH_HOME}/.ci/clusters/mesh_worker_service_integration_test_pulsar_config.yaml
+  ${KUBECTL} -n ${JOB_NAMESPACE} apply -f ${FUNCTION_MESH_HOME}/.ci/clusters/mesh_worker_service_integration_test_pulsar_config.yaml
 }
 
 function ci::ensure_function_mesh_oauth_secret() {
-  ${KUBECTL} apply -f ${FUNCTION_MESH_HOME}/.ci/clusters/mesh_worker_service_integration_test_pulsar_oauth_secret.yaml
+  ${KUBECTL} -n ${JOB_NAMESPACE} apply -f ${FUNCTION_MESH_HOME}/.ci/clusters/mesh_worker_service_integration_test_pulsar_oauth_secret.yaml
 }
 
 function ci::verify_mesh_worker_service_pulsar_admin() {
@@ -350,21 +355,21 @@ function ci::verify_mesh_worker_service_pulsar_admin() {
   if [[ "${RET}" != *"successfully"* ]]; then
    return 1
   fi
-  ${KUBECTL} get pods -n ${NAMESPACE}
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
+  ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   done
-  ${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source"
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+  ${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source"
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks status --name data-generator-sink)
   while [[ $RET != *"true"* ]]; do
@@ -378,36 +383,32 @@ function ci::verify_mesh_worker_service_pulsar_admin() {
    return 1
   fi
 
-  ${KUBECTL} get pods -n ${NAMESPACE}
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources delete --name data-generator-source)
   echo "${RET}"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sinks delete --name data-generator-sink)
   echo "${RET}"
-  ${KUBECTL} get pods -n ${NAMESPACE}
   echo " === verify mesh worker service with empty connector config"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources create --name data-generator-source --source-type data-generator --destination-topic-name persistent://public/default/random-data-topic --custom-runtime-options '{"outputTypeClassName": "org.apache.pulsar.io.datagenerator.Person"}')
   echo "${RET}"
   if [[ $RET != *"successfully"* ]]; then
    return 1
   fi
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
   ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources status --name data-generator-source
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources status --name data-generator-source)
   if [[ $RET != *"true"* ]]; then
-    ${KUBECTL} logs -n ${NAMESPACE} data-generator-source-69865103-source-0
+    ${KUBECTL} logs -n ${JOB_NAMESPACE} data-generator-source-69865103-source-0
     ${KUBECTL} get pods data-generator-source-69865103-source-0 -o yaml
    return 1
   fi
-  ${KUBECTL} get pods -n ${NAMESPACE}
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin sources delete --name data-generator-source)
   echo "${RET}"
-  ${KUBECTL} get pods -n ${NAMESPACE}
 
 }
 
@@ -433,19 +434,19 @@ function ci::verify_mesh_worker_service_pulsar_admin_with_auth() {
   if [[ "${RET}" != *"successfully"* ]]; then
    return 1
   fi
-  ${KUBECTL} get pods -n ${NAMESPACE}
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
+  ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-sink" | wc -l)
   done
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
 
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks status --name data-generator-sink')
@@ -459,35 +460,31 @@ function ci::verify_mesh_worker_service_pulsar_admin_with_auth() {
    return 1
   fi
 
-  ${KUBECTL} get pods -n ${NAMESPACE}
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources delete --name data-generator-source')
   echo "${RET}"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sinks delete --name data-generator-sink')
   echo "${RET}"
-  ${KUBECTL} get pods -n ${NAMESPACE}
   echo " === verify mesh worker service with empty connector config"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources create --name data-generator-source --source-type data-generator --destination-topic-name persistent://public/default/random-data-topic --custom-runtime-options "{\"outputTypeClassName\": \"org.apache.pulsar.io.datagenerator.Person\"}"')
   echo "${RET}"
   if [[ $RET != *"successfully"* ]]; then
    return 1
   fi
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "data-generator-source" | wc -l)
   done
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources status --name data-generator-source')
   if [[ $RET != *"true"* ]]; then
-    ${KUBECTL} logs -n ${NAMESPACE} data-generator-source-69865103-source-0
+    ${KUBECTL} logs -n ${JOB_NAMESPACE} data-generator-source-69865103-source-0
     ${KUBECTL} get pods data-generator-source-69865103-source-0 -o yaml
     return 1
   fi
-  ${KUBECTL} get pods -n ${NAMESPACE}
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters sources delete --name data-generator-source')
   echo "${RET}"
-  ${KUBECTL} get pods -n ${NAMESPACE}
 
 }
 
@@ -538,14 +535,14 @@ function ci::verify_java_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-java-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-java-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   done
 
   # update function
@@ -559,14 +556,14 @@ function ci::verify_java_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-java-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-java-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   done
 
   echo "java function test done"
@@ -581,14 +578,14 @@ function ci::verify_java_package_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-java-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-java-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   done
   echo "java function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions delete --name package-java-fn')
@@ -620,14 +617,14 @@ function ci::verify_python_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   done
 
   # update function
@@ -644,14 +641,14 @@ function ci::verify_python_package() {
     echo "${RET}"
     return 1
   fi
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   done
   echo "python function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-python-fn)
@@ -667,14 +664,14 @@ function ci::verify_python_package_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-fn" | wc -l)
   done
   echo "python function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions delete --name package-python-fn')
@@ -710,14 +707,14 @@ function ci::verify_go_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-go-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-go-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   done
 
   # update function
@@ -734,14 +731,14 @@ function ci::verify_go_package() {
     echo "${RET}"
     return 1
   fi
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-go-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-go-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   done
   echo "go function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-go-fn)
@@ -757,14 +754,14 @@ function ci::verify_go_package_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-go-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-go-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-go-fn" | wc -l)
   done
   echo "go function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions delete --name package-go-fn')
@@ -781,13 +778,13 @@ function ci::create_java_function_by_upload() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-java-fn-function-0
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe pod -n ${JOB_NAMESPACE} package-upload-java-fn-function-0
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   done
   echo "java function test done"
 
@@ -834,13 +831,13 @@ function ci::create_java_function_by_upload_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-java-fn-function-0
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe pod -n ${JOB_NAMESPACE} package-upload-java-fn-function-0
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-java-fn" | wc -l)
   done
   echo "java function test done"
 
@@ -868,7 +865,7 @@ function ci::create_java_function_by_upload_with_auth() {
 }
 
 function ci::verify_secrets_python_package() {
-  ${KUBECTL} apply -f ${FUNCTION_MESH_HOME}/.ci/examples/secret-py-example/secrets_python_secret.yaml
+  ${KUBECTL} -n ${JOB_NAMESPACE} apply -f ${FUNCTION_MESH_HOME}/.ci/examples/secret-py-example/secrets_python_secret.yaml
   sleep 10
 
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --py /pulsar/examples/secret-py-example/secretsfunction.py --name package-python-secret-fn --classname secretsfunction.SecretsFunction --inputs persistent://public/default/package-python-secret-fn-input --output persistent://public/default/package-python-secret-fn-output --subs-position "Earliest" --cpu 0.1 --secrets '{"APPEND_VALUE":{"path":"test-python-secret","key":"append_value"}}')
@@ -879,20 +876,20 @@ function ci::verify_secrets_python_package() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-secret-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-secret-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
   done
 
   sleep 120
   ${KUBECTL} get pods -A
-  RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-secret-fn)
-  ${KUBECTL} logs ${RET}
+  RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-secret-fn)
+  ${KUBECTL} logs -n ${JOB_NAMESPACE} ${RET}
 
   ci:verify_exclamation_function "persistent://public/default/package-python-secret-fn-input" "persistent://public/default/package-python-secret-fn-output" "test-message" "test-message!" 120
 
@@ -902,7 +899,7 @@ function ci::verify_secrets_python_package() {
 }
 
 function ci::verify_secrets_python_package_with_auth() {
-  ${KUBECTL} apply -f ${FUNCTION_MESH_HOME}/.ci/examples/secret-py-example/secrets_python_secret.yaml
+  ${KUBECTL} -n ${JOB_NAMESPACE} apply -f ${FUNCTION_MESH_HOME}/.ci/examples/secret-py-example/secrets_python_secret.yaml
   sleep 10
 
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- sh -c 'bin/pulsar-admin --auth-plugin $brokerClientAuthenticationPlugin --auth-params $brokerClientAuthenticationParameters functions create --py /pulsar/examples/secret-py-example/secretsfunction.py --name package-python-secret-fn --classname secretsfunction.SecretsFunction --inputs persistent://public/default/package-python-secret-fn-input --output persistent://public/default/package-python-secret-fn-output --subs-position "Earliest" --cpu 0.1 --secrets "{\"APPEND_VALUE\":{\"path\":\"test-python-secret\",\"key\":\"append_value\"}}"')
@@ -913,20 +910,20 @@ function ci::verify_secrets_python_package_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-secret-fn)
-    ${KUBECTL} describe ${RET}
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-secret-fn)
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-python-secret-fn" | wc -l)
   done
 
   sleep 120
   ${KUBECTL} get pods -A
-  RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep package-python-secret-fn)
-  ${KUBECTL} logs ${RET}
+  RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep package-python-secret-fn)
+  ${KUBECTL} logs -n ${JOB_NAMESPACE} ${RET}
 
   ci:verify_exclamation_function_with_auth "persistent://public/default/package-python-secret-fn-input" "persistent://public/default/package-python-secret-fn-output" "test-message" "test-message!" 120
 
@@ -944,18 +941,18 @@ function ci::create_source_by_upload() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-source-2c1626bf-source-0
-    ${KUBECTL} get pod package-upload-source-2c1626bf-source-0 -o yaml
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0
+    ${KUBECTL} get -n ${JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0 -o yaml
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
+  RESOURCENAME=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sources ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
 
@@ -970,18 +967,18 @@ function ci::create_source_by_upload() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-source-2c1626bf-source-0
-    ${KUBECTL} get pod package-upload-source-2c1626bf-source-0 -o yaml
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0
+    ${KUBECTL} get -n ${JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0 -o yaml
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
+  RESOURCENAME=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sources ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "source test done"
@@ -1031,18 +1028,18 @@ function ci::create_source_by_upload_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-source-2c1626bf-source-0
-    ${KUBECTL} get pod package-upload-source-2c1626bf-source-0 -o yaml
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0
+    ${KUBECTL} get -n $JOB_NAMESPACE} pod package-upload-source-2c1626bf-source-0 -o yaml
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-source" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
+  RESOURCENAME=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources --no-headers -o custom-columns=":metadata.name" | grep "package-upload-source")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sources ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} -n ${JOB_NAMESPACE} get sources ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "source test done"
@@ -1090,17 +1087,17 @@ function ci::create_sink_by_upload() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-sink-21a402bf-sink-0
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-sink-21a402bf-sink-0
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
+  RESOURCENAME=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sinks ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
 
@@ -1115,17 +1112,17 @@ function ci::create_sink_by_upload() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-sink-21a402bf-sink-0
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-sink-21a402bf-sink-0
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
+  RESOURCENAME=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sinks ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "sink test done"
@@ -1162,17 +1159,17 @@ function ci::create_sink_by_upload_with_auth() {
   sleep 15
   ${KUBECTL} get pods -A
   sleep 5
-  WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+  WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   while [[ ${WC} -lt 1 ]]; do
     echo ${WC};
     sleep 20
-    ${KUBECTL} get pods -n ${NAMESPACE}
-    ${KUBECTL} describe pod package-upload-sink-21a402bf-sink-0
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
+    ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+    ${KUBECTL} describe -n ${JOB_NAMESPACE} pod package-upload-sink-21a402bf-sink-0
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-upload-sink" | wc -l)
   done
-  RESOURCENAME=$(${KUBECTL} get sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
+  RESOURCENAME=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks --no-headers -o custom-columns=":metadata.name" | grep "package-upload-sink")
   echo "${RESOURCENAME}"
-  RET=$(${KUBECTL} get sinks ${RESOURCENAME} -o json | jq .spec.className)
+  RET=$(${KUBECTL} get -n ${JOB_NAMESPACE} sinks ${RESOURCENAME} -o json | jq .spec.className)
   echo "${RET}"
   [[ -z "${RET}" ]] && { echo "className is empty" ; exit 1; }
   echo "sink test done"
@@ -1208,14 +1205,14 @@ function ci::verify_function_stats_api() {
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
     while [[ ${WC} -lt 1 ]]; do
       echo ${WC};
       sleep 20
-      ${KUBECTL} get pods -n ${NAMESPACE}
-      RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep api-java-fn)
-      ${KUBECTL} describe ${RET}
-      WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
+      ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+      RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep api-java-fn)
+      ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+      WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
     done
     sleep 120
     echo "produce messages"
@@ -1246,14 +1243,14 @@ function ci::verify_function_stats_api_with_auth() {
     sleep 15
     ${KUBECTL} get pods -A
     sleep 5
-    WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
+    WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
     while [[ ${WC} -lt 1 ]]; do
       echo ${WC};
       sleep 20
-      ${KUBECTL} get pods -n ${NAMESPACE}
-      RET=$(${KUBECTL} get pods -n ${NAMESPACE} -o name | grep api-java-fn)
-      ${KUBECTL} describe ${RET}
-      WC=$(${KUBECTL} get pods -n ${NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
+      ${KUBECTL} get pods -n ${JOB_NAMESPACE}
+      RET=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} -o name | grep api-java-fn)
+      ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
+      WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "api-java-fn" | wc -l)
     done
     sleep 120
     echo "produce messages"

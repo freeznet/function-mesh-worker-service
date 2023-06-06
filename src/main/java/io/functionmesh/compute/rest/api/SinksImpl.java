@@ -981,7 +981,7 @@ public class SinksImpl extends MeshComponentImpl<V1alpha1Sink, V1alpha1SinkList>
                         V1StatefulSet.class,
                         () -> worker().getAppsV1Api().patchNamespacedStatefulSetCall(
                                 v1StatefulSet.getMetadata().getName(),
-                                namespace,
+                                nameSpaceName,
                                 new V1Patch(v1StatefulSetJSON),
                                 null,
                                 null,

@@ -25,6 +25,7 @@ PULSAR_HOME=`cd ${BINDIR}/..;pwd`
 TLS=${TLS:-"false"}
 SYMMETRIC=${SYMMETRIC:-"false"}
 FUNCTION=${FUNCTION:-"false"}
+JOB_NAMESPACE=pulsar
 
 source ${PULSAR_HOME}/.ci/helm.sh
 

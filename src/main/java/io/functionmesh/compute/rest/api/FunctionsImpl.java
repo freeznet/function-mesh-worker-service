@@ -995,7 +995,7 @@ public class FunctionsImpl extends MeshComponentImpl<V1alpha1Function, V1alpha1F
                         V1StatefulSet.class,
                         () -> worker().getAppsV1Api().patchNamespacedStatefulSetCall(
                                 v1StatefulSet.getMetadata().getName(),
-                                namespace,
+                                nameSpaceName,
                                 new V1Patch(v1StatefulSetJSON),
                                 null,
                                 null,

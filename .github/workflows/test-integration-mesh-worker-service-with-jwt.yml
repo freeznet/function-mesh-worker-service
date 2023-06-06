@@ -79,6 +79,8 @@ jobs:
           WITH_AUTH=true .ci/verify_mesh_worker_service.sh
 
       - name: verify package management service
+        env:
+          JOB_NAMESPACE: pulsar
         timeout-minutes: 15
         run: |
           .ci/verify_package_management_service_with_auth.sh

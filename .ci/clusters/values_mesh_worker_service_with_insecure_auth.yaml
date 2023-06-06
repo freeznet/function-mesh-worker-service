@@ -119,6 +119,7 @@ pulsar_metadata:
     tag: latest
 
 functions:
+  jobNamespace: pulsar
   useDedicatedRunner: false
   configData:
     functionsWorkerServiceNarPackage: /pulsar/mesh-worker-service.nar
@@ -128,12 +129,11 @@ functions:
       functionEnabled: true
       sinkEnabled: true
       sourceEnabled: true
-      jobNamespace: pulsar
       functionRunnerImages:
         "JAVA": streamnative/pulsar-functions-java-runner:3.0.0.1
         "PYTHON": streamnative/pulsar-functions-python-runner:3.0.0.1
         "GO": streamnative/pulsar-functions-go-runner:3.0.0.1
-      oauth2SecretName: sn-platform-oauth2-private-key
+      oauth2SecretName: any-name
 
 broker:
   extraEnv:
