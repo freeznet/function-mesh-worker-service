@@ -47,6 +47,7 @@ import org.apache.pulsar.broker.authorization.AuthorizationService;
 import org.apache.pulsar.broker.resources.PulsarResources;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.common.conf.InternalConfigurationData;
 import org.apache.pulsar.common.util.SimpleTextOutputStream;
 import org.apache.pulsar.functions.runtime.RuntimeUtils;
@@ -86,6 +87,7 @@ public class MeshWorkerService implements WorkerService {
     private CustomObjectsApi customObjectsApi;
     private ApiClient apiClient;
     private PulsarAdmin brokerAdmin;
+    private PulsarClient brokerClient;
     @Deprecated
     private KubernetesRuntimeFactoryConfig factoryConfig;
     private MeshWorkerServiceCustomConfig meshWorkerServiceCustomConfig;
@@ -215,6 +217,7 @@ public class MeshWorkerService implements WorkerService {
         this.authenticationService = authenticationService;
         this.authorizationService = authorizationService;
         this.brokerAdmin = clientCreator.newPulsarAdmin(workerConfig.getPulsarWebServiceUrl(), workerConfig);
+        this.brokerClient = clientCreator.newPulsarClient(workerConfig.getPulsarWebServiceUrl(), workerConfig);
         this.connectorsManager = new MeshConnectorsManager(meshWorkerServiceCustomConfig);
         this.validateExternalServices();
         this.initStateStorageService();
@@ -225,6 +228,13 @@ public class MeshWorkerService implements WorkerService {
     public void stop() {
         if (null != getBrokerAdmin()) {
             getBrokerAdmin().close();
+        }
+        if (null != getBrokerClient()) {
+            try {
+                getBrokerClient().close();
+            } catch (PulsarClientException e) {
+                log.warn("Failed to close pulsar client", e);
+            }
         }
         if (null != stateStoreAdminClient) {
             stateStoreAdminClient.close();

@@ -31,6 +31,7 @@ import static javax.ws.rs.core.Response.Status.BAD_REQUEST;
 import static javax.ws.rs.core.Response.Status.CONFLICT;
 import static javax.ws.rs.core.Response.Status.INTERNAL_SERVER_ERROR;
 import static javax.ws.rs.core.Response.Status.NOT_FOUND;
+import static javax.ws.rs.core.Response.Status.REQUEST_TIMEOUT;
 import static javax.ws.rs.core.Response.Status.SERVICE_UNAVAILABLE;
 import static javax.ws.rs.core.Response.Status.UNAUTHORIZED;
 import static org.apache.bookkeeper.common.concurrent.FutureUtils.result;
@@ -58,9 +59,11 @@ import io.kubernetes.client.util.generic.KubernetesApiResponse;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -69,6 +72,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -89,6 +93,12 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.broker.authentication.AuthenticationParameters;
 import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.Reader;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.api.SchemaSerializationException;
 import org.apache.pulsar.common.functions.FunctionConfig;
 import org.apache.pulsar.common.functions.FunctionState;
 import org.apache.pulsar.common.functions.Resources;
@@ -110,6 +120,7 @@ import org.apache.pulsar.functions.proto.InstanceControlGrpc;
 import org.apache.pulsar.functions.proto.InstanceControlGrpc.InstanceControlFutureStub;
 import org.apache.pulsar.functions.utils.Actions;
 import org.apache.pulsar.functions.utils.ComponentTypeUtils;
+import org.apache.pulsar.functions.utils.FunctionCommon;
 import org.apache.pulsar.functions.utils.SourceConfigUtils;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.functions.worker.service.api.Component;
@@ -378,7 +389,121 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
                                   final InputStream uploadedInputStream,
                                   final String topic,
                                   final AuthenticationParameters authenticationParameters) {
-        return "";
+        if (componentType != Function.FunctionDetails.ComponentType.FUNCTION) {
+            throw new RestException(BAD_REQUEST, "This request is not supported on " + componentType);
+        }
+        if (!isWorkerServiceAvailable()) {
+            throwUnavailableException();
+        }
+
+        this.validatePermission(tenant,
+                namespace,
+                authenticationParameters,
+                ComponentTypeUtils.toString(componentType));
+
+        // validate parameters
+        try {
+            validateTriggerRequestParams(tenant, namespace, functionName, topic, input, uploadedInputStream);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid trigger function request @ /{}/{}/{}", tenant, namespace, functionName, e);
+            throw new RestException(BAD_REQUEST, e.getMessage());
+        }
+
+        String clusterName = worker().getWorkerConfig().getPulsarFunctionsCluster();
+        String nameSpaceName = worker().getJobNamespace();
+        String hashName = CommonUtil.createObjectName(clusterName, tenant, namespace, functionName);
+
+        V1alpha1Function v1alpha1Function =
+                (V1alpha1Function) extractResponse(getResourceApi().get(nameSpaceName, hashName));
+
+        String inputTopicToWrite;
+        if (topic != null) {
+            inputTopicToWrite = topic;
+        } else if (v1alpha1Function.getSpec().getInput().getSourceSpecs().size() == 1) {
+            inputTopicToWrite = v1alpha1Function.getSpec().getInput().getSourceSpecs()
+                    .keySet().iterator().next();
+        } else {
+            log.error("Function in trigger function has more than 1 input topics @ /{}/{}/{}", tenant, namespace,
+                    functionName);
+            throw new RestException(BAD_REQUEST, "Function in trigger function has more than 1 input topics");
+        }
+        if (v1alpha1Function.getSpec().getInput().getSourceSpecs().size() == 0
+                || !v1alpha1Function.getSpec().getInput().getSourceSpecs()
+                .containsKey(inputTopicToWrite)) {
+            log.error("Function in trigger function has unidentified topic @ /{}/{}/{} {}", tenant, namespace,
+                    functionName, inputTopicToWrite);
+            throw new RestException(BAD_REQUEST, "Function in trigger function has unidentified topic");
+        }
+        try {
+            worker().getBrokerAdmin().topics().getSubscriptions(inputTopicToWrite);
+        } catch (PulsarAdminException e) {
+            log.error("Function in trigger function is not ready @ /{}/{}/{}", tenant, namespace, functionName);
+            throw new RestException(BAD_REQUEST, "Function in trigger function is not ready");
+        }
+        String outputTopic = v1alpha1Function.getSpec().getOutput().getTopic();
+        Reader<byte[]> reader = null;
+        Producer<byte[]> producer = null;
+        try {
+            if (!isEmpty(outputTopic)) {
+                reader = worker().getBrokerClient().newReader()
+                        .topic(outputTopic)
+                        .startMessageId(MessageId.latest)
+                        .readerName(worker().getWorkerConfig().getWorkerId() + "-trigger-"
+                                + FunctionCommon.getFullyQualifiedName(tenant, namespace, functionName))
+                        .create();
+            }
+            producer = worker().getBrokerClient().newProducer(Schema.AUTO_PRODUCE_BYTES())
+                    .topic(inputTopicToWrite)
+                    .producerName(worker().getWorkerConfig().getWorkerId() + "-trigger-"
+                            + FunctionCommon.getFullyQualifiedName(tenant, namespace, functionName))
+                    .create();
+            byte[] targetArray;
+            if (uploadedInputStream != null) {
+                targetArray = new byte[uploadedInputStream.available()];
+                uploadedInputStream.read(targetArray);
+            } else {
+                targetArray = input.getBytes();
+            }
+            MessageId msgId = producer.send(targetArray);
+            if (reader == null) {
+                return null;
+            }
+            long curTime = System.currentTimeMillis();
+            long maxTime = curTime + 1000;
+            while (curTime < maxTime) {
+                Message msg = reader.readNext(10000, TimeUnit.MILLISECONDS);
+                if (msg == null) {
+                    break;
+                }
+                if (msg.getProperties().containsKey("__pfn_input_msg_id__")
+                        && msg.getProperties().containsKey("__pfn_input_topic__")) {
+                    MessageId newMsgId = MessageId.fromByteArray(
+                            Base64.getDecoder().decode((String) msg.getProperties().get("__pfn_input_msg_id__")));
+
+                    if (msgId.equals(newMsgId)
+                            && msg.getProperties().get("__pfn_input_topic__")
+                            .equals(TopicName.get(inputTopicToWrite).toString())) {
+                        return new String(msg.getData());
+                    }
+                }
+                curTime = System.currentTimeMillis();
+            }
+            throw new RestException(REQUEST_TIMEOUT, "Request Timed Out");
+        } catch (SchemaSerializationException e) {
+            throw new RestException(BAD_REQUEST, String.format(
+                    "Failed to serialize input with error: %s. Please check"
+                            + "if input data conforms with the schema of the input topic.",
+                    e.getMessage()));
+        } catch (IOException e) {
+            throw new RestException(INTERNAL_SERVER_ERROR, e.getMessage());
+        } finally {
+            if (reader != null) {
+                reader.closeAsync();
+            }
+            if (producer != null) {
+                producer.closeAsync();
+            }
+        }
     }
 
     @Override
@@ -1128,4 +1253,25 @@ public abstract class MeshComponentImpl<T extends io.kubernetes.client.common.Ku
         };
     }
 
+    private void validateTriggerRequestParams(final String tenant,
+                                              final String namespace,
+                                              final String functionName,
+                                              final String topic,
+                                              final String input,
+                                              final InputStream uploadedInputStream) {
+        // Note : Checking topic is not required it can be null
+
+        if (tenant == null) {
+            throw new IllegalArgumentException("Tenant is not provided");
+        }
+        if (namespace == null) {
+            throw new IllegalArgumentException("Namespace is not provided");
+        }
+        if (functionName == null) {
+            throw new IllegalArgumentException("Function name is not provided");
+        }
+        if (uploadedInputStream == null && input == null) {
+            throw new IllegalArgumentException("Trigger Data is not provided");
+        }
+    }
 }

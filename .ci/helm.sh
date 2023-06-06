@@ -525,7 +525,7 @@ function ci::upload_java_package_with_auth() {
 }
 
 function ci::verify_java_package() {
-  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar function://public/default/java-function@1.0 --name package-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-java-fn-input --cpu 0.1)
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar function://public/default/java-function@1.0 --name package-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/package-java-fn-input --output persistent://public/default/package-java-fn-output --cpu 0.1)
   if [[ $RET != *"successfully"* ]]; then
     echo "${RET}"
     return 1
@@ -565,6 +565,14 @@ function ci::verify_java_package() {
     ${KUBECTL} describe -n ${JOB_NAMESPACE} ${RET}
     WC=$(${KUBECTL} get pods -n ${JOB_NAMESPACE} --field-selector=status.phase=Running | grep "package-java-fn" | wc -l)
   done
+
+  sleep 120
+  #trigger function
+  RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions trigger --fqfn public/default/package-java-fn --trigger-value "hello world")
+  if [[ $RET != *"hello world!"* ]]; then
+    echo "${RET}"
+    return 1
+  fi
 
   echo "java function test done"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions delete --name package-java-fn)
