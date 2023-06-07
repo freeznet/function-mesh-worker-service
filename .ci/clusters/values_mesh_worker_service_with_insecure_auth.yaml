@@ -45,22 +45,22 @@ monitoring:
 
 images:
   zookeeper:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
   bookie:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
   autorecovery:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
   broker:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
   functions:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
   proxy:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
 
 zookeeper:
@@ -85,7 +85,7 @@ bookkeeper:
   replicaCount: 1
   metadata:
     image:
-      repository: mesh-worker-service-integration-pulsar
+      repository: localhost:5000/mesh-worker-service-integration-pulsar
       tag: latest
   configData:
     # `BOOKIE_MEM` is used for `bookie shell`
@@ -115,7 +115,7 @@ bookkeeper:
 
 pulsar_metadata:
   image:
-    repository: mesh-worker-service-integration-pulsar
+    repository: localhost:5000/mesh-worker-service-integration-pulsar
     tag: latest
 
 functions:

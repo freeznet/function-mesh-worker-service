@@ -35,6 +35,8 @@ CLUSTER_ID=$(uuidgen | tr "[:upper:]" "[:lower:]")
 FUNCTION_NAME=$1
 
 function ci::create_cluster() {
+    echo "Create local registry ..."
+    ${FUNCTION_MESH_HOME}/hack/kind-registry.sh -cluster-name sn-platform-${CLUSTER_ID}
     echo "Creating a kind cluster ..."
     ${FUNCTION_MESH_HOME}/hack/kind-cluster-build.sh --name sn-platform-${CLUSTER_ID} -c 3 -v 10 -k v1.22.15
     echo "Successfully created a kind cluster."
@@ -96,7 +98,8 @@ function ci::install_pulsar_charts() {
     values=${1:-".ci/clusters/values.yaml"}
     echo $values
     echo "load mesh-worker-service-integration-pulsar:latest ..."
-    kind load docker-image mesh-worker-service-integration-pulsar:latest --name sn-platform-${CLUSTER_ID} || true
+#    kind load docker-image mesh-worker-service-integration-pulsar:latest --name sn-platform-${CLUSTER_ID} || true
+    docker push localhost:5000/mesh-worker-service-integration-pulsar:latest
     if [ -d "pulsar-charts" ]; then
       rm -rf pulsar-charts
     fi
