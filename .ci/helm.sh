@@ -35,8 +35,6 @@ CLUSTER_ID=$(uuidgen | tr "[:upper:]" "[:lower:]")
 FUNCTION_NAME=$1
 
 function ci::create_cluster() {
-    echo "Create local registry ..."
-    ${FUNCTION_MESH_HOME}/hack/kind-registry.sh -cluster-name sn-platform-${CLUSTER_ID}
     echo "Creating a kind cluster ..."
     ${FUNCTION_MESH_HOME}/hack/kind-cluster-build.sh --name sn-platform-${CLUSTER_ID} -c 3 -v 10 -k v1.22.15
     echo "Successfully created a kind cluster."
