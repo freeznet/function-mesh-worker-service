@@ -113,7 +113,7 @@ bookkeeper:
       -XX:-ResizePLAB
       -XX:+ExitOnOutOfMemoryError
       -XX:+PerfDisableSharedMem
-    PULSAR_PREFIX_journalMaxSizeMB: "200"
+    PULSAR_PREFIX_journalMaxSizeMB: "100"
 
 pulsar_metadata:
   image:
