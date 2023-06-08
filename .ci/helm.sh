@@ -1208,6 +1208,8 @@ function ci::create_sink_by_upload_with_auth() {
 
 function ci::verify_function_stats_api() {
   echo "create Java function"
+  echo "produce messages"
+  ${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-client produce -m "test-message" -n 100 "persistent://public/default/api-java-fn-input"
   RET=$(${KUBECTL} exec -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0 -- bin/pulsar-admin functions create --jar /pulsar/examples/api-examples.jar --name api-java-fn --className org.apache.pulsar.functions.api.examples.ExclamationFunction --inputs persistent://public/default/api-java-fn-input -o persistent://public/default/api-java-fn-output --cpu 0.1 --subs-position Earliest)
     echo "${RET}"
     ${KUBECTL} logs --tail=200 -n ${NAMESPACE} ${CLUSTER}-pulsar-broker-0
